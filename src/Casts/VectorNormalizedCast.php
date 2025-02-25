@@ -8,7 +8,6 @@ use ThaKladd\VectorLite\Support\VectorHelper;
 
 class VectorNormalizedCast implements CastsAttributes
 {
-
     public function get(Model $model, string $key, mixed $value, array $attributes)
     {
         return array_map('floatval', explode(',', $value));
@@ -16,8 +15,7 @@ class VectorNormalizedCast implements CastsAttributes
 
     public function set(Model $model, string $key, mixed $value, array $attributes)
     {
-        //Normalize and then implode
+        // Normalize and then implode
         return implode(',', VectorHelper::normalize($value));
     }
-
 }

@@ -34,22 +34,22 @@ class TestCase extends Orchestra
 
     public function getEnvironmentSetUp($app)
     {
-        if(!is_file(database_path('testing.sqlite'))){
+        if (! is_file(database_path('testing.sqlite'))) {
             touch(database_path('testing.sqlite'));
         }
-        //config()->set('database.default', 'testing');
+        // config()->set('database.default', 'testing');
         $app['config']->set('database.default', 'sqlite');
         $app['config']->set('database.connections.sqlite', [
-            'driver'   => 'sqlite',
-            'database' => database_path('testing.sqlite'), //':memory:',
-            'prefix'   => '',
+            'driver' => 'sqlite',
+            'database' => database_path('testing.sqlite'), // ':memory:',
+            'prefix' => '',
         ]);
 
         $app->singleton('db.schema', function ($app) {
             return $app['db']->connection()->getSchemaBuilder();
         });
 
-        //dd(DB::connection()->getPdo()->query('SELECT name FROM sqlite_master WHERE type = "table"')->fetchAll());
+        // dd(DB::connection()->getPdo()->query('SELECT name FROM sqlite_master WHERE type = "table"')->fetchAll());
         /*
          foreach (\Illuminate\Support\Facades\File::allFiles(__DIR__ . '/database/migrations') as $migration) {
             (include $migration->getRealPath())->up();
@@ -57,7 +57,8 @@ class TestCase extends Orchestra
          */
     }
 
-    public function setUpDatabase(){
+    public function setUpDatabase()
+    {
         Schema::create('vectors', function (Blueprint $table) {
             $table->id();
             $table->integer('chunk')->index();

@@ -72,11 +72,12 @@ class VectorLiteServiceProvider extends PackageServiceProvider
                 foreach ($vector1 as $index => $value) {
                     $dotProduct += $value * $vector2[$index];
                 }
+
                 return $dotProduct;
             });
 
             DB::connection()->getPdo()->sqliteCreateFunction('COSIM_CACHE', function ($binaryRowVector, $binaryQueryVector) {
-                //Cache the unpacked query vector in a static variable - so it does not need to be unpacked for each row
+                // Cache the unpacked query vector in a static variable - so it does not need to be unpacked for each row
                 static $queryVector = null;
                 if ($queryVector === null) {
                     $queryVector = unpack('f*', $binaryQueryVector);
@@ -88,6 +89,7 @@ class VectorLiteServiceProvider extends PackageServiceProvider
                 for ($i = 1; $i <= $amount; $i++) {
                     $dotProduct += $queryVector[$i] * $rowVector[$i];
                 }
+
                 return $dotProduct;
             });
 
@@ -97,6 +99,7 @@ class VectorLiteServiceProvider extends PackageServiceProvider
             });
         }
     }
+
     public function configurePackage(Package $package): void
     {
         /*

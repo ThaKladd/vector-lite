@@ -2,7 +2,4 @@
 
 namespace ThaKladd\VectorLite\Traits;
 
-trait HasVector
-{
-
-}
+trait HasVector {}
