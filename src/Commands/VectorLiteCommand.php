@@ -1,12 +1,12 @@
 <?php
 
-namespace VendorName\Skeleton\Commands;
+namespace ThaKladd\VectorLite\Commands;
 
 use Illuminate\Console\Command;
 
-class SkeletonCommand extends Command
+class VectorLiteCommand extends Command
 {
-    public $signature = 'skeleton';
+    public $signature = 'vector-lite';
 
     public $description = 'My command';
 

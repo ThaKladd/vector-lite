@@ -1,17 +1,19 @@
 {
-    "name": ":vendor_slug/:package_slug",
-    "description": ":package_description",
+    "name": "thakladd/vector-lite",
+    "description": "A simple way to add vector capabilities to your existing SQLite database.",
     "keywords": [
-        ":vendor_name",
+        "John Larsen",
         "laravel",
-        ":package_slug"
+        "SQLite",
+        "Vector",
+        "vector-lite"
     ],
-    "homepage": "https://github.com/:vendor_slug/:package_slug",
+    "homepage": "https://github.com/thakladd/vector-lite",
     "license": "MIT",
     "authors": [
         {
-            "name": ":author_name",
-            "email": "author@domain.com",
+            "name": "John Larsen",
+            "email": "johninen@gmail.com",
             "role": "Developer"
         }
     ],
@@ -35,13 +37,13 @@
     },
     "autoload": {
         "psr-4": {
-            "VendorName\\Skeleton\\": "src/",
-            "VendorName\\Skeleton\\Database\\Factories\\": "database/factories/"
+            "ThaKladd\\VectorLite\\": "src/",
+            "ThaKladd\\VectorLite\\Database\\Factories\\": "database/factories/"
         }
     },
     "autoload-dev": {
         "psr-4": {
-            "VendorName\\Skeleton\\Tests\\": "tests/",
+            "ThaKladd\\VectorLite\\Tests\\": "tests/",
             "Workbench\\App\\": "workbench/app/"
         }
     },
@@ -63,10 +65,10 @@
     "extra": {
         "laravel": {
             "providers": [
-                "VendorName\\Skeleton\\SkeletonServiceProvider"
+                "ThaKladd\\VectorLite\\VectorLiteServiceProvider"
             ],
             "aliases": {
-                "Skeleton": "VendorName\\Skeleton\\Facades\\Skeleton"
+                "VectorLite": "ThaKladd\\VectorLite\\Facades\\VectorLite"
             }
         }
     },

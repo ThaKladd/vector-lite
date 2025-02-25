@@ -16,13 +16,17 @@
     backupStaticProperties="false"
 >
     <testsuites>
-        <testsuite name="VendorName Test Suite">
+        <testsuite name="ThaKladd Test Suite">
             <directory>tests</directory>
         </testsuite>
     </testsuites>
     <logging>
         <junit outputFile="build/report.junit.xml"/>
     </logging>
+    <php>
+        <env name="DB_CONNECTION" value="sqlite"/>
+        <env name="DB_DATABASE" value=":memory:"/>
+    </php>
     <source>
         <include>
             <directory suffix=".php">./src</directory>
