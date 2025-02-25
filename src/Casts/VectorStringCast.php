@@ -7,7 +7,6 @@ use Illuminate\Database\Eloquent\Model;
 
 class VectorStringCast implements CastsAttributes
 {
-
     public function get(Model $model, string $key, mixed $value, array $attributes)
     {
         return array_map('floatval', explode(',', $value));
@@ -17,5 +16,4 @@ class VectorStringCast implements CastsAttributes
     {
         return implode(',', $value);
     }
-
 }

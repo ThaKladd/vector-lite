@@ -6,9 +6,6 @@ class VectorHelper
 {
     /**
      * Normalize a vector.
-     *
-     * @param array $vector
-     * @return array
      */
     public static function normalize(array $vector): array
     {
@@ -38,7 +35,7 @@ class VectorHelper
         $sum = 0.0;
 
         // Compute the sum of squares.
-        for ($i = 0; $i < $n; ++$i) {
+        for ($i = 0; $i < $n; $i++) {
             $val = $vector[$i];
             $sum += $val * $val;
         }
@@ -55,7 +52,7 @@ class VectorHelper
         $inv = 1.0 / $norm;
 
         // Normalize each element.
-        for ($i = 0; $i < $n; ++$i) {
+        for ($i = 0; $i < $n; $i++) {
             $vector[$i] *= $inv;
         }
 
@@ -64,17 +61,14 @@ class VectorHelper
 
     public static function normalizeToBinaryFast(array $vector): string
     {
-        return pack("f*", ...self::normalize_fast($vector));
+        return pack('f*', ...self::normalize_fast($vector));
     }
 
     /**
      * Normalize a vector to binary.
-     *
-     * @param array $vector
-     * @return string
      */
     public static function normalizeToBinary(array $vector): string
     {
-        return pack("f*", ...self::normalize($vector));
+        return pack('f*', ...self::normalize($vector));
     }
 }

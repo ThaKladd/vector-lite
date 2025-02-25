@@ -8,15 +8,13 @@ use ThaKladd\VectorLite\Support\VectorHelper;
 
 class VectorBinaryCast implements CastsAttributes
 {
-
     public function get(Model $model, string $key, mixed $value, array $attributes)
     {
-        return unpack("f*", $value);
+        return unpack('f*', $value);
     }
 
     public function set(Model $model, string $key, mixed $value, array $attributes)
     {
         return VectorHelper::normalizeToBinary($value);
     }
-
 }
