@@ -1,9 +1,9 @@
 <?php
 
 use Illuminate\Support\Facades\DB;
-use ThaKladd\VectorLite\Support\VectorHelper;
+use ThaKladd\VectorLite\VectorLite;
 
-ini_set('memory_limit', '20024M');
+ini_set('memory_limit', '20000M');
 
 it('measures the performance of the COSIM functions', function () {
     $start = microtime(true);
@@ -23,8 +23,8 @@ it('measures the performance of the COSIM functions', function () {
         $records[] = [
             'chunk' => $chunk,
             'vector_raw' => implode(',', $vector),
-            'vector_normalized' => implode(',', VectorHelper::normalize($vector)),
-            'vector_packed' => VectorHelper::normalizeToBinary($vector),
+            'vector_normalized' => implode(',', VectorLite::normalize($vector)),
+            'vector_packed' => VectorLite::normalizeToBinary($vector),
             'created_at' => now(),
             'updated_at' => now(),
         ];
@@ -41,8 +41,8 @@ it('measures the performance of the COSIM functions', function () {
         $testVector[] = mt_rand() / mt_getrandmax();
     }
     $testVectorRaw = implode(',', $testVector);
-    $testVectorNormalized = implode(',', VectorHelper::normalize($testVector));
-    $testVectorPacked = VectorHelper::normalizeToBinary($testVector);
+    $testVectorNormalized = implode(',', VectorLite::normalize($testVector));
+    $testVectorPacked = VectorLite::normalizeToBinary($testVector);
     $elapsed = round(microtime(true) - $start, 4);
     echo "\n\nSeeding database: $elapsed\n\n";
     /*

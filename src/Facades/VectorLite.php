@@ -3,6 +3,7 @@
 namespace ThaKladd\VectorLite\Facades;
 
 use Illuminate\Support\Facades\Facade;
+use KMeans\Space;
 
 /**
  * @see \ThaKladd\VectorLite\VectorLite

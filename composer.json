@@ -19,8 +19,10 @@
     ],
     "require": {
         "php": "^8.4",
+        "bdelespierre/php-kmeans": "^2.2",
+        "illuminate/contracts": "^10.0||^11.0",
         "spatie/laravel-package-tools": "^1.16",
-        "illuminate/contracts": "^10.0||^11.0"
+        "ext-curl": "*"
     },
     "require-dev": {
         "laravel/pint": "^1.14",

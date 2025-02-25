@@ -4,7 +4,7 @@ namespace ThaKladd\VectorLite\Casts;
 
 use Illuminate\Contracts\Database\Eloquent\CastsAttributes;
 use Illuminate\Database\Eloquent\Model;
-use ThaKladd\VectorLite\Support\VectorHelper;
+use ThaKladd\VectorLite\VectorLite;
 
 class VectorNormalizedCast implements CastsAttributes
 {
@@ -16,6 +16,6 @@ class VectorNormalizedCast implements CastsAttributes
     public function set(Model $model, string $key, mixed $value, array $attributes)
     {
         // Normalize and then implode
-        return implode(',', VectorHelper::normalize($value));
+        return implode(',', VectorLite::normalize($value));
     }
 }

@@ -4,7 +4,7 @@ namespace ThaKladd\VectorLite\Casts;
 
 use Illuminate\Contracts\Database\Eloquent\CastsAttributes;
 use Illuminate\Database\Eloquent\Model;
-use ThaKladd\VectorLite\Support\VectorHelper;
+use ThaKladd\VectorLite\VectorLite;
 
 class VectorBinaryCast implements CastsAttributes
 {
@@ -15,6 +15,6 @@ class VectorBinaryCast implements CastsAttributes
 
     public function set(Model $model, string $key, mixed $value, array $attributes)
     {
-        return VectorHelper::normalizeToBinary($value);
+        return VectorLite::normalizeToBinary($value);
     }
 }
