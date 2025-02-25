@@ -4,9 +4,8 @@ namespace ThaKladd\VectorLite;
 
 use KMeans\Space;
 
-class VectorLite {
-
-
+class VectorLite
+{
     /**
      * Normalize a vector.
      */
@@ -187,7 +186,7 @@ class VectorLite {
         } else {
             // No suitable cluster found; create a new one.
             $clusters[] = [
-                'mean'  => $newVector,
+                'mean' => $newVector,
                 'count' => 1,
             ];
         }
@@ -210,11 +209,11 @@ class VectorLite {
                 $half1 = floor($cluster['count'] / 2);
                 $half2 = ceil($cluster['count'] / 2);
                 $clusters[$i] = [
-                    'mean'  => $newMean1,
+                    'mean' => $newMean1,
                     'count' => $half1,
                 ];
                 $clusters[] = [
-                    'mean'  => $newMean2,
+                    'mean' => $newMean2,
                     'count' => $half2,
                 ];
             }
@@ -229,7 +228,9 @@ class VectorLite {
                 $mergeIndex = null;
                 $currentMean = $clusters[$i]['mean'];
                 for ($j = 0; $j < count($clusters); $j++) {
-                    if ($i === $j) continue;
+                    if ($i === $j) {
+                        continue;
+                    }
                     $distance = 0.0;
                     $otherMean = $clusters[$j]['mean'];
                     for ($d = 0; $d < $dim; $d++) {
@@ -265,10 +266,9 @@ class VectorLite {
         return $clusters;
     }
 
-
     public static function getVectorEmbedding(string $text): array
     {
-        //Get the vector embedding of text
+        // Get the vector embedding of text
         $embeddings = [];
 
         return $embeddings;

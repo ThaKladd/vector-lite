@@ -70,9 +70,9 @@ class PineconeService
     public function deleteEmbeddings()
     {
         $this->body['deleteAll'] = 'true';
+
         return $this->client->post('vectors/delete', [
             'json' => $this->body,
         ]);
     }
-
 }

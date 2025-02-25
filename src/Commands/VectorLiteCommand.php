@@ -20,13 +20,13 @@ class VectorLiteCommand extends Command
     public function handle(): int
     {
         $forTableName = $this->argument('table');
-        $modelClass = 'App\\Models\\' . Str::studly((Str::singular($forTableName)));
-        $clusterModelClass = $modelClass . 'Cluster';
-        $clusterModelTable = Str::snake($forTableName) . '_clusters';
+        $modelClass = 'App\\Models\\'.Str::studly((Str::singular($forTableName)));
+        $clusterModelClass = $modelClass.'Cluster';
+        $clusterModelTable = Str::snake($forTableName).'_clusters';
         $this->createMigration($forTableName, $clusterModelTable);
         $this->createModel($clusterModelClass);
         $this->call('migrate');
-        $this->info("Migrated.");
+        $this->info('Migrated.');
 
         return self::SUCCESS;
     }
@@ -77,7 +77,7 @@ STUB;
 
     protected function createModel(string $className)
     {
-        //Call an artisan command to create a model
+        // Call an artisan command to create a model
         $this->call('make:model', ['name' => $className]);
         $this->info("Created model: {$className}");
     }
