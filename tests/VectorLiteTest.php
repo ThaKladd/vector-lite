@@ -23,8 +23,8 @@ it('measures the performance of the COSIM functions', function () {
         $records[] = [
             'chunk' => $chunk,
             'vector_raw' => implode(',', $vector),
-            'vector_normalized' => implode(',', VectorHelper::normalize_fast($vector)),
-            'vector_packed' => VectorHelper::normalizeToBinaryFast($vector),
+            'vector_normalized' => implode(',', VectorHelper::normalize($vector)),
+            'vector_packed' => VectorHelper::normalizeToBinary($vector),
             'created_at' => now(),
             'updated_at' => now(),
         ];
@@ -41,8 +41,8 @@ it('measures the performance of the COSIM functions', function () {
         $testVector[] = mt_rand() / mt_getrandmax();
     }
     $testVectorRaw = implode(',', $testVector);
-    $testVectorNormalized = implode(',', VectorHelper::normalize_fast($testVector));
-    $testVectorPacked = VectorHelper::normalizeToBinaryFast($testVector);
+    $testVectorNormalized = implode(',', VectorHelper::normalize($testVector));
+    $testVectorPacked = VectorHelper::normalizeToBinary($testVector);
     $elapsed = round(microtime(true) - $start, 4);
     echo "\n\nSeeding database: $elapsed\n\n";
     /*
