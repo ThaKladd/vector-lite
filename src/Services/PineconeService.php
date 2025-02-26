@@ -14,12 +14,6 @@ class PineconeService
     {
         $this->client = new Client([
             'base_uri' => config('vector-lite.pinecone.base_url'),
-            'timeout' => 3000,
-            'connect_timeout' => 3000,
-            'curl' => [
-                CURLOPT_CONNECTTIMEOUT => 3000000,
-                CURLOPT_CONNECTTIMEOUT_MS => 3000000,
-            ],
             'headers' => [
                 'Api-Key' => config('vector-lite.pinecone.api_key'),
                 'Accept' => 'application/json',
@@ -37,34 +31,38 @@ class PineconeService
 
     public function storeEmbeddings(array $embeddings): void
     {
-        $this->body['vectors'] = $embeddings;
-        $this->client->post('vectors/upsert', [
-            'json' => $this->body,
-        ]);
+        $chunks = array_chunk($embeddings, 100);
+        foreach ($chunks as $chunk) {
+            $this->body['vectors'] = $chunk;
+            $this->client->post('vectors/upsert', [
+                'json' => $this->body,
+            ]);
+        }
     }
 
     public function storeEmbedding(int $id, array $embedding, array $meta = []): void
     {
         $this->storeEmbeddings([
-            ['id' => $id, 'values' => $embedding, 'metadata' => $meta],
+            ['id' => 'i'.$id, 'values' => $embedding, 'metadata' => $meta],
         ]);
     }
 
-    public function query(int $id, array $vector, $topK = 5, $includeValues = false, $includeMetadata = true)
+    public function query(int $id, array $vector, $topK = 5, $includeValues = false, $includeMetadata = true): string
     {
         return $this->client->post('query', [
             'json' => [
                 'topK' => $topK,
                 'filter' => [
-                    '$and' => [
-                        ['id' => $id],
+                    'id' => [
+                        '$lte' => $id,
                     ],
                 ],
+                'namespace' => $this->body['namespace'] ?? '',
                 'includeValues' => $includeValues,
                 'includeMetadata' => $includeMetadata,
                 'vector' => $vector,
             ],
-        ]);
+        ])->getBody()->getContents();
     }
 
     public function deleteEmbeddings()

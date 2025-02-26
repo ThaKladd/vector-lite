@@ -70,7 +70,7 @@ trait HasVector {
      * @param  float   $threshold The similarity threshold
      * @return Builder
      */
-    public function scopeHavingVector(Builder $query, string|array $vector = null, string $operator = '>', float $threshold = 0.0, ?string $vectorColumn = null): Builder
+    public function scopeHavingVector(Builder $query, null|string|array $vector = null, string $operator = '>', float $threshold = 0.0, ?string $vectorColumn = null): Builder
     {
         // Validate the operator.
         $allowed = ['=', '>', '<', '>=', '<=', '<>', '!='];

@@ -98,6 +98,15 @@ class VectorLiteServiceProvider extends PackageServiceProvider
                 return $this->binary($column, $length, $fixed);
             });
         }
+
+        $this->publishes([
+            __DIR__.'/../config/vector-lite.php' => config_path('vector-lite.php'),
+        ], 'vector-lite-config');
+    }
+
+    public function register()
+    {
+        $this->mergeConfigFrom(__DIR__.'/../config/vector-lite.php', 'vector-lite');
     }
 
     public function configurePackage(Package $package): void

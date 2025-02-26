@@ -1,15 +1,35 @@
 <?php
 
 use Illuminate\Support\Facades\DB;
+use ThaKladd\VectorLite\Services\PineconeService;
 use ThaKladd\VectorLite\VectorLite;
 
 ini_set('memory_limit', '20000M');
 
+
+it('tests the connection to the Pinecone service', function () {
+    $pinecone = new PineconeService();
+
+    $vector = [];
+    for ($j = 0; $j < 1536; $j++) {
+        $vector[] = mt_rand() / mt_getrandmax();
+    }
+    $pinecone->namespace('testing');
+    $pinecone->storeEmbedding(3, $vector, ['id' => 2]);
+    $pinecone->query(1, $vector, 10);
+    $pinecone->deleteEmbeddings();
+    expect(true)->toBeTrue();
+})->skip();
+
 it('measures the performance of the COSIM functions', function () {
+
+
     $start = microtime(true);
 
     $amount = 100000;
     $records = [];
+    /*
+    $vectors = [];
     for ($i = 0; $i < $amount; $i++) {
         $vector = [];
         for ($j = 0; $j < 1536; $j++) {
@@ -19,7 +39,8 @@ it('measures the performance of the COSIM functions', function () {
         if ($i % 1000 === 0) {
             $chunk++;
         }
-
+        $vectors[] = ['id' => 'i'.$i, 'values' => $vector, 'metadata' => ['id' => $i]];
+        /*
         $records[] = [
             'chunk' => $chunk,
             'vector_raw' => implode(',', $vector),
@@ -29,12 +50,21 @@ it('measures the performance of the COSIM functions', function () {
             'updated_at' => now(),
         ];
         unset($vector);
-    }
+    }*/
 
     // Insert records in chunks to avoid memory issues.
+    /*
     foreach (array_chunk($records, 1000) as $chunk) {
         DB::table('vectors')->insert($chunk);
     }
+*/
+    $startPinecone = microtime(true);
+    // Insert records into Pinecone
+    $pinecone = new PineconeService();
+    $pinecone->namespace('testing');
+    //$pinecone->storeEmbeddings($vectors);
+    $elapsedPinecone = round(microtime(true) - $startPinecone, 4);
+    echo "\n\nUpsert to Pinecone database: $elapsedPinecone\n\n";
 
     $testVector = [];
     for ($i = 0; $i < 1536; $i++) {
@@ -45,6 +75,30 @@ it('measures the performance of the COSIM functions', function () {
     $testVectorPacked = VectorLite::normalizeToBinary($testVector);
     $elapsed = round(microtime(true) - $start, 4);
     echo "\n\nSeeding database: $elapsed\n\n";
+
+    $topK = 20;
+    // Measure the time to run the query.
+    $start = microtime(true);
+    $result = $pinecone->query(100, $testVector, $topK, true);
+    $elapsed = round(microtime(true) - $start, 4);
+    echo "100: $elapsed\n";
+
+    $start = microtime(true);
+    $result = $pinecone->query(1000, $testVector, $topK, true);
+    $elapsed = round(microtime(true) - $start, 4);
+    echo "1000: $elapsed\n";
+
+    $start = microtime(true);
+    $result = $pinecone->query(10000, $testVector, $topK, true);
+    $elapsed = round(microtime(true) - $start, 4);
+    echo "10000: $elapsed\n";
+
+    $start = microtime(true);
+    $result = $pinecone->query(100000, $testVector, $topK, true);
+    $elapsed = round(microtime(true) - $start, 4);
+    echo "100000: $elapsed\n\n";
+
+    //$pinecone->deleteEmbeddings();
     /*
         // Measure the time to run the query.
         $start = microtime(true);
@@ -129,4 +183,4 @@ it('measures the performance of the COSIM functions', function () {
         echo "COSIM_CACHE(100000): $elapsed\n\n";
 
         expect($results)->not->toBeEmpty();*/
-});
+})->skip();

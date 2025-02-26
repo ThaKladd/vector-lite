@@ -2,6 +2,7 @@
 
 namespace ThaKladd\VectorLite\Tests;
 
+use Dotenv\Dotenv;
 use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -44,6 +45,14 @@ class TestCase extends Orchestra
             'database' => database_path('testing.sqlite'), // ':memory:',
             'prefix' => '',
         ]);
+        $app['config']->set('vector-lite.pinecone', [
+            'base_url' => env('PINECONE_BASE_URL'),
+            'api_key' => env('PINECONE_API_KEY')
+        ]);
+        // Optionally load your .env variables here if needed:
+        if (file_exists(__DIR__.'/../.env')) {
+            Dotenv::createImmutable(__DIR__.'/../')->load();
+        }
 
         $app->singleton('db.schema', function ($app) {
             return $app['db']->connection()->getSchemaBuilder();
