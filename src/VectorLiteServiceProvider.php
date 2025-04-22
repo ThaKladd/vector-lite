@@ -3,10 +3,12 @@
 namespace ThaKladd\VectorLite;
 
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Spatie\LaravelPackageTools\Package;
 use Spatie\LaravelPackageTools\PackageServiceProvider;
-use ThaKladd\VectorLite\Commands\VectorLiteCommand;
+use ThaKladd\VectorLite\Commands\MakeVectorLiteClusterCommand;
+use ThaKladd\VectorLite\Commands\VectorLiteClusterCommand;
 
 class VectorLiteServiceProvider extends PackageServiceProvider
 {
@@ -76,13 +78,52 @@ class VectorLiteServiceProvider extends PackageServiceProvider
                 return $dotProduct;
             });
 
-            DB::connection()->getPdo()->sqliteCreateFunction('COSIM_CACHE', function ($binaryRowVector, $binaryQueryVector) {
+            DB::connection()->getPdo()->sqliteCreateFunction('COSIM_CACHE', function ($rowId, $binaryRowVector, $queryId, $binaryQueryVector) {
                 // Cache the unpacked query vector in a static variable - so it does not need to be unpacked for each row
-                static $queryVector = null;
-                if ($queryVector === null) {
-                    $queryVector = unpack('f*', $binaryQueryVector);
+                static $cache = [];
+                static $dot = [];
+                static $amount = 0;
+                static $driver = null;
+                static $cacheTime = false;
+
+                // If cache is empty, and driver is set, then load the cache from the driver
+                if(!$dot && $driver = config('vector-lite.cache_driver')) {
+                    $cacheTime = $cacheTime ?: config('vector-lite.cache_time');
+                    $dot = Cache::get($driver)->get('vector-lite-cache', []);
                 }
 
+                // Check if the dot product is already cached
+                if(isset($dot[$rowId][$queryId])) {
+                    return $dot[$rowId][$queryId];
+                }
+
+                //Cache the unpacked vectors for the current session
+                if (!isset($cache[$queryId])) {
+                    $cache[$queryId] = unpack('f*', $binaryQueryVector);
+                }
+                if (!isset($cache[$rowId])) {
+                    $cache[$rowId] = unpack('f*', $binaryRowVector);
+                }
+
+                if($amount === 0) {
+                    $amount = count($cache[$queryId]);
+                }
+
+                $dotProduct = 0.0;
+                for ($i = 1; $i <= $amount; $i++) {
+                    $dotProduct += $cache[$queryId][$i] * $cache[$rowId][$i];
+                }
+                $dotProduct = $dot[$rowId][$queryId] = $dotProduct;
+
+                if(isset($driver) && $driver) {
+                    Cache::store($driver)->put('vector-lite-cache', $dot, $cacheTime);
+                }
+
+                return $dotProduct;
+            });
+
+            DB::connection()->getPdo()->sqliteCreateFunction('COSIM', function ($binaryRowVector, $binaryQueryVector) {
+                $queryVector = unpack('f*', $binaryQueryVector);
                 $rowVector = unpack('f*', $binaryRowVector);
                 $amount = count($queryVector);
                 $dotProduct = 0.0;
@@ -95,7 +136,8 @@ class VectorLiteServiceProvider extends PackageServiceProvider
 
             Blueprint::macro('vectorLite', function (string $column, $length = null, $fixed = false) {
                 /** @var Blueprint $this */
-                return $this->binary($column, $length, $fixed);
+                $this->binary($column, $length, $fixed)->nullable();
+                $this->string($column.'_hash')->nullable();
             });
         }
 
@@ -107,6 +149,10 @@ class VectorLiteServiceProvider extends PackageServiceProvider
     public function register()
     {
         $this->mergeConfigFrom(__DIR__.'/../config/vector-lite.php', 'vector-lite');
+        $this->commands([
+            VectorLiteClusterCommand::class,
+            MakeVectorLiteClusterCommand::class
+        ]);
     }
 
     public function configurePackage(Package $package): void
@@ -121,6 +167,6 @@ class VectorLiteServiceProvider extends PackageServiceProvider
             ->hasConfigFile()
             ->hasViews()
             ->hasMigration('create_vector_lite_table')
-            ->hasCommand(VectorLiteCommand::class);
+            ->hasCommand(VectorLiteClusterCommand::class);
     }
 }

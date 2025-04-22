@@ -6,6 +6,7 @@ use Dotenv\Dotenv;
 use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Orchestra\Testbench\TestCase as Orchestra;
@@ -19,6 +20,7 @@ class TestCase extends Orchestra
     {
         parent::setUp();
         $this->setUpDatabase();
+
         \Illuminate\Support\Facades\Schema::setFacadeApplication($this->app);
 
         Factory::guessFactoryNamesUsing(
@@ -45,10 +47,9 @@ class TestCase extends Orchestra
             'database' => database_path('testing.sqlite'), // ':memory:',
             'prefix' => '',
         ]);
-        $app['config']->set('vector-lite.pinecone', [
-            'base_url' => env('PINECONE_BASE_URL'),
-            'api_key' => env('PINECONE_API_KEY')
-        ]);
+
+        //$app['config']->set('database.migrations', []);
+
         // Optionally load your .env variables here if needed:
         if (file_exists(__DIR__.'/../.env')) {
             Dotenv::createImmutable(__DIR__.'/../')->load();
@@ -66,14 +67,16 @@ class TestCase extends Orchestra
          */
     }
 
-    public function setUpDatabase()
+    public function setUpDatabase(): void
     {
+        Schema::dropIfExists('vectors');
         Schema::create('vectors', function (Blueprint $table) {
             $table->id();
             $table->integer('chunk')->index();
-            $table->vectorLite('vector_raw');
-            $table->vectorLite('vector_normalized');
-            $table->vectorLite('vector_packed');
+            $table->vectorLite('vector');
+            //$table->vectorLite('vector_raw');
+            //$table->vectorLite('vector_normalized');
+            //$table->vectorLite('vector_packed');
             $table->timestamps();
         });
     }

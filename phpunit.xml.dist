@@ -24,8 +24,10 @@
         <junit outputFile="build/report.junit.xml"/>
     </logging>
     <php>
-        <env name="DB_CONNECTION" value="sqlite"/>
+        <!--<env name="DB_CONNECTION" value="sqlite"/>
         <env name="DB_DATABASE" value=":memory:"/>
+        <env name="DB_CONNECTION" value="sqlite"/>
+        <env name="DB_DATABASE" value="/var/lib/sqld/testing.db"/>-->
     </php>
     <source>
         <include>

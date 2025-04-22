@@ -2,115 +2,138 @@
 
 namespace ThaKladd\VectorLite\Traits;
 
+use App\Models\VectorsCluster;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\HasOne;
+use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Str;
+use ThaKladd\VectorLite\QueryBuilders\VectorLiteQueryBuilder;
+use ThaKladd\VectorLite\Tests\Models\Vector;
 use ThaKladd\VectorLite\VectorLite;
 
+/**
+ * @mixin Model
+ */
 trait HasVector {
-    protected string $similarityAlias = 'similarity';
-    protected string $vectorColumn = 'vector';
+    public static string $similarityAlias = 'similarity';
+    public static string $vectorColumn = 'vector';
 
-    /**
-     * Add a select clause that computes cosine similarity.
-     *
-     * @param  Builder $query
-     * @param  mixed   $vector  The binary vector to compare
-     * @return Builder
-     */
-    public function scopeSelectSimilarity(Builder $query, $vector, ?string $alias = null, ?string $vectorColumn = null): Builder
+    public bool $useCache = false;
+
+    public static function bootHasVector(): void
     {
-        $this->similarityAlias = $alias ?? $this->similarityAlias;
-        $this->vectorColumn = $vectorColumn ?? $this->vectorColumn;
-        // Using {$this->getTable()} ensures we select all columns from the current table first.
-        /* @var Model $this */
-        return $query->selectRaw("{$this->getTable()}.*, COSIM({$this->vectorColumn}, ?) as {$alias}", [$vector]);
+        static::creating(function ($model) {
+            // Make sure the computed attribute is not saved
+            if (array_key_exists(self::$similarityAlias, $model->attributes)) {
+                unset($model->attributes[self::$similarityAlias]);
+            }
+        });
+
+        static::created(function ($model) {
+            // Remove the computed attribute if it exists in the attributes array
+            /*
+            if (array_key_exists($model->similarityAlias, $model->attributes)) {
+                unset($model->attributes[$model->similarityAlias]);
+            }
+
+            if (!in_array($model->similarityAlias, $model->guarded)) {
+                $model->guarded[] = $model->similarityAlias;
+            }*/
+
+            //if ($model->isDirty($model->vectorColumn)) {
+                // $model->vector = VectorLite::normalizeToBinary($model->vector);
+                // Only attempt clustering if a clusters table exists
+                $clusterTable = $model->getClusterTableName();
+                if (Schema::hasTable($clusterTable) && $model->{self::$vectorColumn}) {
+                    // Delegate the clustering logic to a dedicated service
+                    new VectorLite()->processCreated($model);
+                }
+            //}
+        });
+
+        static::saving(function ($model) {
+            // If the vector column is dirty, re-create hash
+            if ($model->isDirty($model->{self::$vectorColumn})) {
+                $hashColumn = $model->getVectorHashColumn(self::$vectorColumn);
+                $model->$hashColumn = $model->hashVectorBlob(self::$vectorColumn);
+            }
+        });
+
+        static::saved(function ($model) {
+            // If saved, and the vector column was dirty, re-calculate the cluster
+            $clusterTable = $model->getClusterTableName();
+            if (Schema::hasTable($clusterTable) && $model->isDirty($model->{self::$vectorColumn}) && $model->{self::$vectorColumn}) {
+                // Delegate the clustering logic to a dedicated service
+                new VectorLite()->processUpdated($model);
+            }
+        });
+
+        static::deleted(function ($model) {
+            // If deleted, remove from the cluster
+            $clusterTable = $model->getClusterTableName();
+            if (Schema::hasTable($clusterTable) && $model->{self::$vectorColumn}) {
+                // Delegate the clustering logic to a dedicated service
+                new VectorLite()->processDelete($model);
+            }
+        });
+    }
+
+    public function newEloquentBuilder($query): VectorLiteQueryBuilder
+    {
+        return new VectorLiteQueryBuilder($query);
     }
 
     /**
-     * Add a where clause based on cosine similarity.
-     *
-     * @param  Builder $query
-     * @param  mixed   $vector    The binary vector to compare
-     * @param  string  $operator  The comparison operator (e.g. '>', '<', etc.)
-     * @param  float   $threshold The similarity threshold
-     * @return Builder
+     * This initializer is automatically called when the model is instantiated.
      */
-    public function scopeWhereVector(Builder $query, null|array|string $vector = null, string $operator = '>', float $threshold = 0.0, ?string $vectorColumn = null): Builder
+    public function initializeHasVector(): void
     {
-        // Validate the operator to avoid SQL injection.
-        $allowed = ['=', '>', '<', '>=', '<=', '<>', '!='];
-        if (!in_array($operator, $allowed, true)) {
-            throw new \InvalidArgumentException("Invalid operator [$operator] provided.");
+        $this->useCache = config('vector-lite.use_cached_cosim', false);
+        // Ensure 'similarity' is in the appended attributes.
+        if (! in_array(self::$similarityAlias, $this->appends)) {
+            $this->appends[] = self::$similarityAlias;
         }
-        $vectorColumn = $vectorColumn ?? $this->vectorColumn;
-        return $query->whereRaw("COSIM({$vectorColumn}, ?) $operator ?", [$vector, $threshold]);
     }
 
-    /**
-     * Add a where clause based on cosine similarity where the vector is between two values.
-     *
-     * @param  Builder $query
-     * @param  mixed   $vector The binary vector to compare
-     * @param  float   $min The minimum similarity threshold
-     * @param  float   $max The maximum similarity threshold
-     * @return Builder
-     */
-    public function scopeWhereVectorBetween(Builder $query, null|array|string $vector = null, float $min = 0.0, float $max = 1.0, ?string $vectorColumn = null): Builder
+    public function getClusterForeignKey(): string
     {
-        $vectorColumn = $vectorColumn ?? $this->vectorColumn;
-        return $query->whereRaw("COSIM({$vectorColumn}, ?) BETWEEN ? AND ?", [$vector, $min, $max]);
+        return Str::singular($this->getClusterTableName()) . '_id';
     }
 
-    /**
-     * Add a having clause based on cosine similarity.
-     *
-     * @param  Builder $query
-     * @param  mixed   $vector    The binary vector to compare
-     * @param  string  $operator  The comparison operator (e.g. '>', '<', etc.)
-     * @param  float   $threshold The similarity threshold
-     * @return Builder
-     */
-    public function scopeHavingVector(Builder $query, null|string|array $vector = null, string $operator = '>', float $threshold = 0.0, ?string $vectorColumn = null): Builder
+    public function getClusterTableName(): string
     {
-        // Validate the operator.
-        $allowed = ['=', '>', '<', '>=', '<=', '<>', '!='];
-        if (! in_array($operator, $allowed, true)) {
-            throw new \InvalidArgumentException("Invalid operator [$operator] provided.");
-        }
-
-        $vector = $vector ?? $this->similarityAlias;
-
-        // Determine if the similarity column is already part of the query.
-        $hasSimilarityColumn = false;
-        if ($vector === $this->similarityAlias || (!empty($query->columns) && is_array($query->columns) && in_array($this->similarityAlias, $query->columns))) {
-            $hasSimilarityColumn = true;
-        }
-
-        if ($hasSimilarityColumn) {
-            // If the similarity column is already selected, use it in the HAVING clause.
-            return $query->having($this->similarityAlias, $operator, $threshold);
-        }
-
-        $vectorColumn = $vectorColumn ?? $this->vectorColumn;
-        // Otherwise, compute the similarity on the fly.
-        // (Note: Using HAVING RAW here because operators and bindings must be inline.)
-        return $query->havingRaw("COSIM({$vectorColumn}, ?) $operator ?", [$vector, $threshold]);
+        return $this->getTable() . '_clusters';
     }
 
-    /**
-     * Order the query by cosine similarity.
-     *
-     * @param  Builder $query
-     * @param  mixed   $vector    The binary vector to compare
-     * @param  string  $direction The ordering direction ('asc' or 'desc')
-     * @return Builder
-     */
-    public function scopeOrderBySimilarity(Builder $query, $vector, string $direction = 'desc', ?string $vectorColumn = null): Builder
+    public function getClusterModelName(): string
     {
-        $vectorColumn = $vectorColumn ?? $this->vectorColumn;
-        $direction = strtolower($direction) === 'asc' ? 'asc' : 'desc';
-        return $query->orderByRaw("COSIM({$vectorColumn}, ?) $direction", [$vector]);
+        return Str::plural(get_class($this)).'Cluster';
     }
+
+    public function getModelName(): string
+    {
+        return get_class($this);
+    }
+
+    public function getUniqueRowIdAttribute(): string
+    {
+        return $this->getTable() . '_' . $this->id;
+    }
+
+    public static function hashVectorBlob(string $string)
+    {
+        return hash('xxh3', $string);
+    }
+
+    public function getVectorHashColumn(): ?string
+    {
+        $columnExists = Schema::hasColumn($this->getTable(), self::$vectorColumn . '_hash');
+        return $columnExists ? $this->getTable() . '.' . self::$vectorColumn . '_hash' : null;
+    }
+
+
 
     /**
      * Accessor for the similarity attribute.
@@ -119,10 +142,10 @@ trait HasVector {
      *
      * @return float|null
      */
-    public function getSimilarityAttribute()
+    public function getSimilarityAttribute(): ?float
     {
         // Use the dynamic column name stored in $this->similarityAlias, defaulting to 'similarity'
-        return isset($this->attributes[$this->similarityAlias]) ? (float) $this->attributes[$this->similarityAlias] : null;
+        return isset($this->attributes[self::$similarityAlias]) ? (float) $this->attributes[self::$similarityAlias] : null;
     }
 
     /**
@@ -133,6 +156,7 @@ trait HasVector {
      * @param  mixed  $value
      * @return array|null
      */
+    /*
     public function getVectorAttribute($value) {
         $column = $this->vectorColumn ?? 'vector';
         $floats = isset($this->attributes[$column]) ? (float) $this->attributes[$column] : null;
@@ -146,7 +170,7 @@ trait HasVector {
         }
 
         return null;
-    }
+    }*/
 
     /**
      * Mutator for setting the vector attribute.
@@ -156,11 +180,16 @@ trait HasVector {
      * @param  array  $vector
      * @return void
      */
-    protected function setVectorAttribute(array $vector) {
-        $column = $this->vectorColumn ?? 'vector';
+    protected function setVectorAttribute(array $vector): void
+    {
         // Pack array of floats into binary format
         // If not an array, assume it's already binary or handle error
-        $this->attributes[$column] = VectorLite::normalizeToBinary($vector);
+        $this->attributes[self::$vectorColumn] = VectorLite::normalizeToBinary($vector);
     }
 
+    public function cluster(): HasOne  {
+        $clusterModelName = $this->getClusterModelName();
+        $clusterModel = new $clusterModelName;
+        return $this->hasOne($clusterModel::class);
+    }
 }
