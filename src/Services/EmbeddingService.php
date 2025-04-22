@@ -20,7 +20,7 @@ class EmbeddingService
         $this->client = new Client([
             'base_uri' => 'https://api.openai.com/v1/',
             'headers' => [
-                'Authorization' => 'Bearer ' . config('vector-lite.openai.api_key'),
+                'Authorization' => 'Bearer '.config('vector-lite.openai.api_key'),
                 'Accept' => 'application/json',
                 'Cache-Control' => 'no-cache',
                 'X-Accel-Buffering' => 'no',
@@ -47,5 +47,4 @@ class EmbeddingService
     {
         return $this->createEmbeddings([$text], $dimensions)[0]['embedding'] ?? [];
     }
-
 }
