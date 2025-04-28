@@ -86,25 +86,31 @@ class VectorLiteQueryBuilder extends Builder
     /**
      * Search for the best matches based on cosine similarity.
      */
-    public function searchBestByVector(null|array|string $vector = null, int $limit = 3): Collection
+    public function searchBestByVector(null|array|string $vector = null, ?int $limit = null): Collection
     {
-        $this->bestByVector($vector);
+        $this->bestByVector($vector, $limit);
         return $this->get();
     }
 
-    public function bestByVector(null|array|string $vector = null): Builder
+    public function bestByVector(null|array|string $vector = null, ?int $limit = null): Builder
     {
         $model = $this->getModel();
-        $cosimMethodCall = $this->getCosimMethod($vector, $model::$vectorColumn);
-        return $this->selectRaw("{$model->getTable()}.*, {$cosimMethodCall} as {$model::$similarityAlias}", [$vector])
+        $cosimMethodCall = $this->getCosimMethod($vector);
+        $query = $this->selectRaw("{$model->getTable()}.*, {$cosimMethodCall} as {$model::$similarityAlias}", [$vector])
             ->whereRaw("{$model::$similarityAlias} >= ?", [$vector, 0.0])
             ->orderByRaw("{$model::$similarityAlias} DESC", [$vector]);
+
+        if ($limit) {
+            return $query->limit($limit);
+        } else {
+            return $query;
+        }
     }
 
     /**
      * Add a where clause based on cosine similarity.
      */
-    public function scopeWhereVector(null|array|string $vector = null, string $operator = '>', float $threshold = 0.0): Builder
+    public function whereVector(null|array|string $vector = null, string $operator = '>', float $threshold = 0.0): Builder
     {
         // Validate the operator to avoid SQL injection.
         $allowed = ['=', '>', '<', '>=', '<=', '<>', '!='];
@@ -118,7 +124,7 @@ class VectorLiteQueryBuilder extends Builder
     /**
      * Add a where clause based on cosine similarity where the vector is between two values.
      */
-    public function scopeWhereVectorBetween(null|array|string $vector = null, float $min = 0.0, float $max = 1.0): Builder
+    public function whereVectorBetween(null|array|string $vector = null, float $min = 0.0, float $max = 1.0): Builder
     {
         $cosimMethodCall = $this->getCosimMethod($vector);
         return $this->whereRaw("$cosimMethodCall BETWEEN ? AND ?", [$vector, $min, $max]);
@@ -127,7 +133,7 @@ class VectorLiteQueryBuilder extends Builder
     /**
      * Add a having clause based on cosine similarity.
      */
-    public function scopeHavingVector(null|string|array $vector = null, string $operator = '>', float $threshold = 0.0): Builder
+    public function havingVector(null|string|array $vector = null, string $operator = '>', float $threshold = 0.0): Builder
     {
         // Validate the operator.
         $allowed = ['=', '>', '<', '>=', '<=', '<>', '!='];
@@ -158,7 +164,7 @@ class VectorLiteQueryBuilder extends Builder
     /**
      * Order the query by cosine similarity.
      */
-    public function scopeOrderBySimilarity($vector, string $direction = 'desc'): Builder
+    public function orderBySimilarity($vector, string $direction = 'desc'): Builder
     {
         $direction = strtolower($direction) === 'asc' ? 'asc' : 'desc';
         $cosimMethodCall = $this->getCosimMethod($vector);
@@ -168,9 +174,10 @@ class VectorLiteQueryBuilder extends Builder
     /**
      * Exclude the current model from the query.
      */
-    public function scopeExcludeCurrent(Model $model): Builder
+    public function excludeCurrent(?Model $model = null): Builder
     {
-        return $this->where($this->getModel()->getTable() . '.id', '!=', $model->id);
+        $current = $model ?? $this;
+        return $this->where($this->getModel()->getTable() . '.id', '!=', $current->id);
     }
 
 }
