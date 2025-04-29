@@ -41,7 +41,7 @@ class VectorLiteMakeCommand extends Command
         }
 
         if (select('Make clustering for this vectors?', ['yes', 'no']) === 'yes') {
-            $table = new $model->getTable();
+            $table = new $model->getTable;
             $this->call('vector-lite:cluster', ['table' => $table]);
         }
 
@@ -52,7 +52,7 @@ class VectorLiteMakeCommand extends Command
     {
         // Determine migration filename with current timestamp.
         $timestamp = date('Y_m_d_His');
-        $table = new $model->getTable();
+        $table = new $model->getTable;
         $migrationFile = database_path("migrations/{$timestamp}_alter_{$table}_add_vector_columns.php");
 
         // A simple stub for the migration.
