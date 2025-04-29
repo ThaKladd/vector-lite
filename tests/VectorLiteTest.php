@@ -26,7 +26,7 @@ it('can create vector table and use vector methods', function () {
 
     // Check if the vectors are inserted
     $vectors = DB::table('vectors')->count();
-    $this->assertTrue($vectors > 0);
+    $this->assertTrue($vectors == 100);
 
     $vectorModel = Vector::query()->inRandomOrder()->first();
     $this->assertNotNull($vectorModel);
@@ -53,4 +53,7 @@ it('can create vector cluster table and use cluster methods', function () {
 
     // Check if the table exists
     $this->assertTrue(DB::getSchemaBuilder()->hasTable('vectors_clusters'));
+
+    $vectors = DB::table('vectors_clusters')->count();
+    $this->assertTrue($vectors == 100);
 });
