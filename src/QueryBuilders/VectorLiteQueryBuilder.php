@@ -5,6 +5,8 @@ namespace ThaKladd\VectorLite\QueryBuilders;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Schema;
 
 class VectorLiteQueryBuilder extends Builder
 {
@@ -17,16 +19,28 @@ class VectorLiteQueryBuilder extends Builder
         return $this;
     }
 
+    public function getVectorHashColumn(?Model $model = null): ?string
+    {
+        $columnExists = Schema::hasColumn($model->getTable(), $model::$vectorColumn . '_hash');
+
+        return $columnExists ? $model->getTable().'.' . $model::$vectorColumn . '_hash' : null;
+    }
+
+    public static function hashVectorBlob(string $string)
+    {
+        return hash('xxh3', $string);
+    }
+
     private function getCosimMethod($vector): string
     {
         $model = $this->getModel();
+        $vectorColumn = "{$model->getTable()}.{$model::$vectorColumn}";
         if ($model->useCache) {
-            $hashColumn = $this->getVectorHashColumn() ?? "'{$this->getTable()}:{$this->id}'";
+            $hashColumn = $this->getVectorHashColumn($model) ?? "'{$model->getTable()}:{$model->id}'";
             $hashed = self::hashVectorBlob($vector);
-
-            return "COSIM_CACHE({$hashColumn}, {$model::$vectorColumn}, {$hashed}, ?)";
+            return "COSIM_CACHE({$hashColumn}, {$vectorColumn}, '{$hashed}', ?)";
         } else {
-            return "COSIM({$model::$vectorColumn}, ?)";
+            return "COSIM({$vectorColumn}, ?)";
         }
     }
 
@@ -76,17 +90,15 @@ class VectorLiteQueryBuilder extends Builder
         $model = $this->getModel();
         /* @var Model $modelClass */
         $cosimMethodCall = $this->getCosimMethod($vector);
-
         return $this->selectRaw("{$model->getTable()}.*, {$cosimMethodCall} as {$model::$similarityAlias}", [$vector]);
     }
 
     /**
      * Find the best match based on cosine similarity.
      */
-    public function findBestByVector(null|array|string $vector = null): self
+    public function findBestByVector(null|array|string $vector = null): ?self
     {
         $this->bestByVector($vector);
-
         return $this->first();
     }
 
@@ -104,9 +116,10 @@ class VectorLiteQueryBuilder extends Builder
     {
         $model = $this->getModel();
         $cosimMethodCall = $this->getCosimMethod($vector);
+
         $query = $this->selectRaw("{$model->getTable()}.*, {$cosimMethodCall} as {$model::$similarityAlias}", [$vector])
-            ->whereRaw("{$model::$similarityAlias} >= ?", [$vector, 0.0])
-            ->orderByRaw("{$model::$similarityAlias} DESC", [$vector]);
+            ->whereRaw("{$model::$similarityAlias} >= ?", [0.0])
+            ->orderByRaw("{$model::$similarityAlias} DESC");
 
         if ($limit) {
             return $query->limit($limit);

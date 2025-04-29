@@ -8,23 +8,23 @@ use Illuminate\Support\Str;
 
 class VectorLite
 {
-    protected string $clusterTable;
+    protected string $clusterTable = '';
 
-    protected string $clusterModelName;
+    protected string $clusterModelName = '';
 
-    protected string $clusterForeignKey;
+    protected string $clusterForeignKey = '';
 
-    protected string $matchColumn;
+    protected string $matchColumn = '';
 
-    protected string $maxClusterSize;
+    protected string $maxClusterSize = '';
 
-    protected string $countColumn;
+    protected string $countColumn = '';
 
-    protected string $modelClass;
+    protected string $modelClass = '';
 
-    protected string $clusterClass;
+    protected string $clusterClass = '';
 
-    protected string $modelTable;
+    protected string $modelTable = '';
 
     public static array $clusterCache = [];
 
@@ -89,8 +89,8 @@ class VectorLite
             // Find the closest cluster by cosine similarity to the model’s vector.
             /** @var Model $this->model */
             $bestCluster = $this->clusterModelName::selectRaw(
-                "{$this->clusterTable}.id, {$this->clusterTable}.{$this->countColumn}, COSIM_CACHE({$model->getVectorHashColumn()}, {$this->clusterTable}.vector, ?, ?) as similarity",
-                [$model->{$model->vectorColumn.'_hash'}, $model->{$model->vectorColumn}]
+                "{$this->clusterTable}.id, {$this->clusterTable}.{$this->countColumn}, COSIM_CACHE({$model->getVectorHashColumn(new $this->clusterModelName)}, {$this->clusterTable}.vector, ?, ?) as similarity",
+                [$model->{($model::$vectorColumn).'_hash'}, $model->{$model::$vectorColumn}]
             )->orderBy('similarity', 'desc')->first();
 
             if ($bestCluster) {
@@ -125,10 +125,15 @@ class VectorLite
         $clusterModelName = $this->clusterModelName;
 
         /* @var Model $clusterModelName */
-        return $clusterModelName::create([
-            'vector_raw' => $model->{$model->vectorColumn},
+        $clusterModel = new $clusterModelName;
+        $clusterModel->setRawAttributes([
+            'vector' => $model->{$model::$vectorColumn},
+            'vector_hash' => $model->{($model::$vectorColumn).'_hash'},
             $this->countColumn => 1,
         ]);
+
+        $clusterModel->save();
+        return $clusterModel;
     }
 
     protected function updateModelWithCluster(Model $model, Model $cluster, float $similarity): void
@@ -165,7 +170,7 @@ class VectorLite
             /** @var Model $this->clusterClass */
             $bestCluster = $this->clusterClass::selectRaw(
                 "{$this->clusterTable}.id, {$this->clusterTable}.{$this->countColumn}, COSIM_CACHE({$fullCluster->getVectorHashColumn()}, {$this->clusterTable}.vector, ?, ?) as similarity",
-                [$leastMatchModel->{$leastMatchModel->vectorColumn.'_hash'}, $leastMatchModel->{$leastMatchModel->vectorColumn}]
+                [$leastMatchModel->{($leastMatchModel::$vectorColumn).'_hash'}, $leastMatchModel->{$leastMatchModel::$vectorColumn}]
             )->orderBy('similarity', 'desc')->get()->first();
 
             // Round to 14 decimals because of what database column can hold

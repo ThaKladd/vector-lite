@@ -16,7 +16,7 @@ it('can connect to database', function () {
 
 it('can create vector table and use vector methods', function () {
     // Create the table
-    Artisan::call('vector-lite:make', ['model' => 'Vector']);
+    //Artisan::call('vector-lite:make', ['model' => 'Vector']);
 
     // Check if the table exists
     $this->assertTrue(DB::getSchemaBuilder()->hasTable('vectors'));

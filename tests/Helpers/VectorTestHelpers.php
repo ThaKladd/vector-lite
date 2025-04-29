@@ -4,6 +4,7 @@ namespace ThaKladd\VectorLite\Tests\Helpers;
 
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
+use ThaKladd\VectorLite\QueryBuilders\VectorLiteQueryBuilder;
 use ThaKladd\VectorLite\Tests\Models\Vector;
 use ThaKladd\VectorLite\VectorLite;
 
@@ -19,22 +20,23 @@ trait VectorTestHelpers
         return $vector;
     }
 
-    private function createVectorRecord(int $dimensions = 1536): array
+    private function createVectorRecord(int $dimensions = 1536, bool $isBatch = false): array
     {
         $vector = $this->createVectorArray($dimensions);
-
+        $binaryVector = VectorLite::normalizeToBinary($vector);
         return [
-            'vector' => VectorLite::normalizeToBinary($vector),
+            'vector' => $isBatch ? $binaryVector : $vector,
+            'vector_hash' => VectorLiteQueryBuilder::hashVectorBlob($binaryVector),
             'created_at' => now(),
             'updated_at' => now(),
         ];
     }
 
-    private function createVectors(int $amount = 1000, int $dimensions = 1536): array
+    private function createVectors(int $amount = 1000, int $dimensions = 1536, bool $isBatch = false): array
     {
         $records = [];
         for ($i = 0; $i < $amount; $i++) {
-            $records[] = $this->createVectorRecord($dimensions);
+            $records[] = $this->createVectorRecord($dimensions, $isBatch);
         }
 
         return $records;
@@ -49,7 +51,7 @@ trait VectorTestHelpers
 
     private function fillVectorTable(int $amount = 1000, int $dimensions = 1536): void
     {
-        $records = $this->createVectors($amount, $dimensions);
+        $records = $this->createVectors($amount, $dimensions, true);
 
         foreach (array_chunk($records, 1000) as $chunk) {
             DB::table('vectors')->insert($chunk);

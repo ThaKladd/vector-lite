@@ -47,7 +47,7 @@ trait HasVector
             $clusterTable = $model->getClusterTableName();
             if (Schema::hasTable($clusterTable) && $model->{self::$vectorColumn}) {
                 // Delegate the clustering logic to a dedicated service
-                (new VectorLite)->processCreated($model);
+                new VectorLite($model)->processCreated($model);
             }
             // }
         });
@@ -65,7 +65,7 @@ trait HasVector
             $clusterTable = $model->getClusterTableName();
             if (Schema::hasTable($clusterTable) && $model->isDirty($model->{self::$vectorColumn}) && $model->{self::$vectorColumn}) {
                 // Delegate the clustering logic to a dedicated service
-                (new VectorLite)->processUpdated($model);
+                new VectorLite($model)->processUpdated($model);
             }
         });
 
@@ -74,7 +74,7 @@ trait HasVector
             $clusterTable = $model->getClusterTableName();
             if (Schema::hasTable($clusterTable) && $model->{self::$vectorColumn}) {
                 // Delegate the clustering logic to a dedicated service
-                (new VectorLite)->processDelete($model);
+                new VectorLite($model)->processDelete($model);
             }
         });
     }
@@ -121,18 +121,6 @@ trait HasVector
         return $this->getTable().'_'.$this->id;
     }
 
-    public static function hashVectorBlob(string $string)
-    {
-        return hash('xxh3', $string);
-    }
-
-    public function getVectorHashColumn(): ?string
-    {
-        $columnExists = Schema::hasColumn($this->getTable(), self::$vectorColumn.'_hash');
-
-        return $columnExists ? $this->getTable().'.'.self::$vectorColumn.'_hash' : null;
-    }
-
     /**
      * Accessor for the similarity attribute.
      *
@@ -177,7 +165,9 @@ trait HasVector
     {
         // Pack array of floats into binary format
         // If not an array, assume it's already binary or handle error
-        $this->attributes[self::$vectorColumn] = VectorLite::normalizeToBinary($vector);
+        $binaryVector = VectorLite::normalizeToBinary($vector);
+        $this->attributes[self::$vectorColumn] = $binaryVector;
+        $this->attributes[self::$vectorColumn . '_hash'] = VectorLiteQueryBuilder::hashVectorBlob($binaryVector);
     }
 
     public function cluster(): HasOne
