@@ -5,7 +5,6 @@ namespace ThaKladd\VectorLite;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Log;
 use Spatie\LaravelPackageTools\Package;
 use Spatie\LaravelPackageTools\PackageServiceProvider;
 use ThaKladd\VectorLite\Commands\MakeVectorLiteClusterCommand;

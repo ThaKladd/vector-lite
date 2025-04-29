@@ -5,7 +5,6 @@ namespace ThaKladd\VectorLite\QueryBuilders;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Schema;
 
 class VectorLiteQueryBuilder extends Builder
@@ -21,9 +20,9 @@ class VectorLiteQueryBuilder extends Builder
 
     public function getVectorHashColumn(?Model $model = null): ?string
     {
-        $columnExists = Schema::hasColumn($model->getTable(), $model::$vectorColumn . '_hash');
+        $columnExists = Schema::hasColumn($model->getTable(), $model::$vectorColumn.'_hash');
 
-        return $columnExists ? $model->getTable().'.' . $model::$vectorColumn . '_hash' : null;
+        return $columnExists ? $model->getTable().'.'.$model::$vectorColumn.'_hash' : null;
     }
 
     public static function hashVectorBlob(string $string)
@@ -38,6 +37,7 @@ class VectorLiteQueryBuilder extends Builder
         if ($model->useCache) {
             $hashColumn = $this->getVectorHashColumn($model) ?? "'{$model->getTable()}:{$model->id}'";
             $hashed = self::hashVectorBlob($vector);
+
             return "COSIM_CACHE({$hashColumn}, {$vectorColumn}, '{$hashed}', ?)";
         } else {
             return "COSIM({$vectorColumn}, ?)";
@@ -90,6 +90,7 @@ class VectorLiteQueryBuilder extends Builder
         $model = $this->getModel();
         /* @var Model $modelClass */
         $cosimMethodCall = $this->getCosimMethod($vector);
+
         return $this->selectRaw("{$model->getTable()}.*, {$cosimMethodCall} as {$model::$similarityAlias}", [$vector]);
     }
 
@@ -99,6 +100,7 @@ class VectorLiteQueryBuilder extends Builder
     public function findBestByVector(null|array|string $vector = null): ?self
     {
         $this->bestByVector($vector);
+
         return $this->first();
     }
 

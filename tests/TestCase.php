@@ -71,7 +71,7 @@ class TestCase extends Orchestra
         Schema::dropIfExists('vectors');
         Schema::create('vectors', function (Blueprint $table) {
             $table->id();
-            //$table->integer('chunk')->index();
+            // $table->integer('chunk')->index();
             $table->vectorLite('vector');
             // $table->vectorLite('vector_raw');
             // $table->vectorLite('vector_normalized');
