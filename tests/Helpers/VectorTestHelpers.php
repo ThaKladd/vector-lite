@@ -15,12 +15,14 @@ trait VectorTestHelpers
         for ($j = 0; $j < $dimensions; $j++) {
             $vector[] = mt_rand() / mt_getrandmax();
         }
+
         return $vector;
     }
 
     private function createVectorRecord(int $dimensions = 1536): array
     {
         $vector = $this->createVectorArray($dimensions);
+
         return [
             'vector' => VectorLite::normalizeToBinary($vector),
             'created_at' => now(),
@@ -34,12 +36,14 @@ trait VectorTestHelpers
         for ($i = 0; $i < $amount; $i++) {
             $records[] = $this->createVectorRecord($dimensions);
         }
+
         return $records;
     }
 
     private function createAndInsertVector(int $dimensions = 1536): Vector
     {
         $this->fillVectorTable(1, $dimensions);
+
         return Vector::query()->orderBy('id', 'desc')->first();
     }
 
@@ -62,5 +66,4 @@ trait VectorTestHelpers
             Vector::create($record);
         }
     }
-
 }

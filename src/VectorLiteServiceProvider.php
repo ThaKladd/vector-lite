@@ -87,25 +87,25 @@ class VectorLiteServiceProvider extends PackageServiceProvider
                 static $cacheTime = false;
 
                 // If cache is empty, and driver is set, then load the cache from the driver
-                if(!$dot && $driver = config('vector-lite.cache_driver')) {
+                if (! $dot && $driver = config('vector-lite.cache_driver')) {
                     $cacheTime = $cacheTime ?: config('vector-lite.cache_time');
                     $dot = Cache::get($driver)->get('vector-lite-cache', []);
                 }
 
                 // Check if the dot product is already cached
-                if(isset($dot[$rowId][$queryId])) {
+                if (isset($dot[$rowId][$queryId])) {
                     return $dot[$rowId][$queryId];
                 }
 
-                //Cache the unpacked vectors for the current session
-                if (!isset($cache[$queryId])) {
+                // Cache the unpacked vectors for the current session
+                if (! isset($cache[$queryId])) {
                     $cache[$queryId] = unpack('f*', $binaryQueryVector);
                 }
-                if (!isset($cache[$rowId])) {
+                if (! isset($cache[$rowId])) {
                     $cache[$rowId] = unpack('f*', $binaryRowVector);
                 }
 
-                if($amount === 0) {
+                if ($amount === 0) {
                     $amount = count($cache[$queryId]);
                 }
 
@@ -115,7 +115,7 @@ class VectorLiteServiceProvider extends PackageServiceProvider
                 }
                 $dotProduct = $dot[$rowId][$queryId] = $dotProduct;
 
-                if(isset($driver) && $driver) {
+                if (isset($driver) && $driver) {
                     Cache::store($driver)->put('vector-lite-cache', $dot, $cacheTime);
                 }
 
@@ -151,7 +151,7 @@ class VectorLiteServiceProvider extends PackageServiceProvider
         $this->mergeConfigFrom(__DIR__.'/../config/vector-lite.php', 'vector-lite');
         $this->commands([
             VectorLiteClusterCommand::class,
-            MakeVectorLiteClusterCommand::class
+            MakeVectorLiteClusterCommand::class,
         ]);
     }
 

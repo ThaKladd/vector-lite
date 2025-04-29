@@ -6,7 +6,6 @@ use Dotenv\Dotenv;
 use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Orchestra\Testbench\TestCase as Orchestra;
@@ -48,7 +47,7 @@ class TestCase extends Orchestra
             'prefix' => '',
         ]);
 
-        //$app['config']->set('database.migrations', []);
+        // $app['config']->set('database.migrations', []);
 
         // Optionally load your .env variables here if needed:
         if (file_exists(__DIR__.'/../.env')) {
@@ -74,9 +73,9 @@ class TestCase extends Orchestra
             $table->id();
             $table->integer('chunk')->index();
             $table->vectorLite('vector');
-            //$table->vectorLite('vector_raw');
-            //$table->vectorLite('vector_normalized');
-            //$table->vectorLite('vector_packed');
+            // $table->vectorLite('vector_raw');
+            // $table->vectorLite('vector_normalized');
+            // $table->vectorLite('vector_packed');
             $table->timestamps();
         });
     }

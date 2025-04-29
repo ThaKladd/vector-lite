@@ -5,6 +5,7 @@ namespace ThaKladd\VectorLite\Commands;
 use Illuminate\Console\Command;
 use Illuminate\Filesystem\Filesystem;
 use Illuminate\Support\Str;
+
 use function Laravel\Prompts\select;
 
 class VectorLiteClusterCommand extends Command
@@ -22,21 +23,21 @@ class VectorLiteClusterCommand extends Command
     {
         $timestamp = date('Y_m_d_His');
         $forTableName = $this->argument('table');
-        $modelClass = 'App\\Models\\' . Str::studly($forTableName);
-        $clusterModelClass = $modelClass . 'Cluster';
-        $clusterModelTable = Str::snake($forTableName) . '_clusters';
+        $modelClass = 'App\\Models\\'.Str::studly($forTableName);
+        $clusterModelClass = $modelClass.'Cluster';
+        $clusterModelTable = Str::snake($forTableName).'_clusters';
 
         $this->info('This will create a new table and model for the cluster.');
         $this->createMigration($forTableName, $clusterModelTable, $timestamp);
         $this->createModel($clusterModelClass);
 
-        //Delete the migration file if testing environment
+        // Delete the migration file if testing environment
         if (app()->environment('testing')) {
             $this->call('migrate');
-            $this->info("Migrated.");
+            $this->info('Migrated.');
             $this->files->delete(database_path("migrations/{$timestamp}_create_{$clusterModelTable}_table.php"));
         } else {
-            if(select('Run the migrations?', ['yes', 'no']) === 'yes') {
+            if (select('Run the migrations?', ['yes', 'no']) === 'yes') {
                 $this->call('migrate');
                 $this->info('Cluster table migrated.');
             } else {
@@ -97,7 +98,7 @@ STUB;
 
     protected function createModel(string $className): void
     {
-        //Call an artisan command to create a model
+        // Call an artisan command to create a model
         $this->call('vector-lite:make:cluster', ['name' => $className]);
         $this->info("Created model: {$className}");
     }

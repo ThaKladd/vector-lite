@@ -2,9 +2,6 @@
 
 namespace ThaKladd\VectorLite\Traits;
 
-use App\Models\VectorsCluster;
-use Illuminate\Database\Eloquent\Builder;
-use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Support\Facades\Schema;
@@ -16,8 +13,10 @@ use ThaKladd\VectorLite\VectorLite;
 /**
  * @mixin Model
  */
-trait HasVector {
+trait HasVector
+{
     public static string $similarityAlias = 'similarity';
+
     public static string $vectorColumn = 'vector';
 
     public bool $useCache = false;
@@ -42,15 +41,15 @@ trait HasVector {
                 $model->guarded[] = $model->similarityAlias;
             }*/
 
-            //if ($model->isDirty($model->vectorColumn)) {
-                // $model->vector = VectorLite::normalizeToBinary($model->vector);
-                // Only attempt clustering if a clusters table exists
-                $clusterTable = $model->getClusterTableName();
-                if (Schema::hasTable($clusterTable) && $model->{self::$vectorColumn}) {
-                    // Delegate the clustering logic to a dedicated service
-                    new VectorLite()->processCreated($model);
-                }
-            //}
+            // if ($model->isDirty($model->vectorColumn)) {
+            // $model->vector = VectorLite::normalizeToBinary($model->vector);
+            // Only attempt clustering if a clusters table exists
+            $clusterTable = $model->getClusterTableName();
+            if (Schema::hasTable($clusterTable) && $model->{self::$vectorColumn}) {
+                // Delegate the clustering logic to a dedicated service
+                (new VectorLite)->processCreated($model);
+            }
+            // }
         });
 
         static::saving(function ($model) {
@@ -66,7 +65,7 @@ trait HasVector {
             $clusterTable = $model->getClusterTableName();
             if (Schema::hasTable($clusterTable) && $model->isDirty($model->{self::$vectorColumn}) && $model->{self::$vectorColumn}) {
                 // Delegate the clustering logic to a dedicated service
-                new VectorLite()->processUpdated($model);
+                (new VectorLite)->processUpdated($model);
             }
         });
 
@@ -75,7 +74,7 @@ trait HasVector {
             $clusterTable = $model->getClusterTableName();
             if (Schema::hasTable($clusterTable) && $model->{self::$vectorColumn}) {
                 // Delegate the clustering logic to a dedicated service
-                new VectorLite()->processDelete($model);
+                (new VectorLite)->processDelete($model);
             }
         });
     }
@@ -99,12 +98,12 @@ trait HasVector {
 
     public function getClusterForeignKey(): string
     {
-        return Str::singular($this->getClusterTableName()) . '_id';
+        return Str::singular($this->getClusterTableName()).'_id';
     }
 
     public function getClusterTableName(): string
     {
-        return $this->getTable() . '_clusters';
+        return $this->getTable().'_clusters';
     }
 
     public function getClusterModelName(): string
@@ -119,7 +118,7 @@ trait HasVector {
 
     public function getUniqueRowIdAttribute(): string
     {
-        return $this->getTable() . '_' . $this->id;
+        return $this->getTable().'_'.$this->id;
     }
 
     public static function hashVectorBlob(string $string)
@@ -129,18 +128,15 @@ trait HasVector {
 
     public function getVectorHashColumn(): ?string
     {
-        $columnExists = Schema::hasColumn($this->getTable(), self::$vectorColumn . '_hash');
-        return $columnExists ? $this->getTable() . '.' . self::$vectorColumn . '_hash' : null;
+        $columnExists = Schema::hasColumn($this->getTable(), self::$vectorColumn.'_hash');
+
+        return $columnExists ? $this->getTable().'.'.self::$vectorColumn.'_hash' : null;
     }
-
-
 
     /**
      * Accessor for the similarity attribute.
      *
      * This allows you to cast the similarity attribute to a float, for example.
-     *
-     * @return float|null
      */
     public function getSimilarityAttribute(): ?float
     {
@@ -176,9 +172,6 @@ trait HasVector {
      * Mutator for setting the vector attribute.
      *
      * When you do $model->vector = [0.123, 0.456, ...], it will be stored as binary floats.
-     *
-     * @param  array  $vector
-     * @return void
      */
     protected function setVectorAttribute(array $vector): void
     {
@@ -187,9 +180,11 @@ trait HasVector {
         $this->attributes[self::$vectorColumn] = VectorLite::normalizeToBinary($vector);
     }
 
-    public function cluster(): HasOne  {
+    public function cluster(): HasOne
+    {
         $clusterModelName = $this->getClusterModelName();
         $clusterModel = new $clusterModelName;
+
         return $this->hasOne($clusterModel::class);
     }
 }

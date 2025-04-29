@@ -1,12 +1,9 @@
 <?php
 
-use App\Models\VectorsCluster;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Str;
 use ThaKladd\VectorLite\Tests\Helpers\VectorTestHelpers;
 use ThaKladd\VectorLite\Tests\Models\Vector;
-use ThaKladd\VectorLite\VectorLite;
 
 ini_set('memory_limit', '20000M');
 
@@ -48,8 +45,6 @@ it('can create vector table and use vector methods', function () {
     $bestVectors = Vector::searchBestByVector($vectorArray, 3);
     $this->assertNotNull($bestVectors);
     $this->assertCount(3, $bestVectors);
-
-
 
 });
 

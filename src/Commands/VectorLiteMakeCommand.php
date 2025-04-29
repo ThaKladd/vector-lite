@@ -5,6 +5,7 @@ namespace ThaKladd\VectorLite\Commands;
 use Illuminate\Console\Command;
 use Illuminate\Filesystem\Filesystem;
 use Illuminate\Support\Str;
+
 use function Laravel\Prompts\select;
 
 class VectorLiteMakeCommand extends Command
@@ -20,7 +21,7 @@ class VectorLiteMakeCommand extends Command
 
     public function handle(): int
     {
-        //Get a list of all models in the app directory
+        // Get a list of all models in the app directory
         $models = $this->laravel['files']->allFiles(app_path('Models'));
         $modelList = [];
         foreach ($models as $model) {
@@ -29,18 +30,18 @@ class VectorLiteMakeCommand extends Command
         }
         $this->info('This command will create a vector column and a vector hash column for a model.');
         $newValue = select('Select model to add vector columns to:', $modelList);
-        $model = 'App\\Models\\' . Str::studly($newValue);
+        $model = 'App\\Models\\'.Str::studly($newValue);
 
         $this->createMigration($model);
-        if(select('Run the migrations?', ['yes', 'no']) === 'yes') {
+        if (select('Run the migrations?', ['yes', 'no']) === 'yes') {
             $this->call('migrate');
             $this->info('Migrated.');
         } else {
             $this->info("Run 'php artisan migrate' to create the columns.");
         }
 
-        if(select('Make clustering for this vectors?', ['yes', 'no']) === 'yes') {
-            $table = new $model()->getTable();
+        if (select('Make clustering for this vectors?', ['yes', 'no']) === 'yes') {
+            $table = new $model->getTable();
             $this->call('vector-lite:cluster', ['table' => $table]);
         }
 
@@ -51,7 +52,7 @@ class VectorLiteMakeCommand extends Command
     {
         // Determine migration filename with current timestamp.
         $timestamp = date('Y_m_d_His');
-        $table = new $model()->getTable();
+        $table = new $model->getTable();
         $migrationFile = database_path("migrations/{$timestamp}_alter_{$table}_add_vector_columns.php");
 
         // A simple stub for the migration.

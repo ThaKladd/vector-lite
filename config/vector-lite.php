@@ -33,7 +33,7 @@ return [
     |            You could reduce the amount of cluster to look up, by filtering
     |            on other columns, giving room for even more vectors.
     */
-    'clusters_size' => 500, //Default to manage around 250000 vectors
+    'clusters_size' => 500, // Default to manage around 250000 vectors
 
     /*
      * --------------------------------------------------------------------------
@@ -48,7 +48,7 @@ return [
      * If you add a cache driver, then the cache becomes more global
      * and persist between sessions.
      */
-    'use_cached_cosim' => true, //Cached cosim function on by default
+    'use_cached_cosim' => true, // Cached cosim function on by default
     'cache_driver' => env('CACHE_DRIVER', false),
-    'cache_time' => 60 * 60 * 24, //Cache time in seconds
+    'cache_time' => 60 * 60 * 24, // Cache time in seconds
 ];

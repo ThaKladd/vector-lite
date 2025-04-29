@@ -6,16 +6,22 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
-class VectorLite {
-
+class VectorLite
+{
     protected string $clusterTable;
+
     protected string $clusterModelName;
+
     protected string $clusterForeignKey;
+
     protected string $matchColumn;
 
     protected string $maxClusterSize;
+
     protected string $countColumn;
+
     protected string $modelClass;
+
     protected string $clusterClass;
 
     protected string $modelTable;
@@ -24,17 +30,17 @@ class VectorLite {
 
     public function __construct(?Model $model = null)
     {
-        if($model) {
+        if ($model) {
             $this->clusterTable = $model->getClusterTableName();
-            $this->clusterForeignKey = Str::singular($this->clusterTable) . '_id';
-            $this->matchColumn = Str::singular($this->clusterTable) . '_match';
+            $this->clusterForeignKey = Str::singular($this->clusterTable).'_id';
+            $this->matchColumn = Str::singular($this->clusterTable).'_match';
             $this->clusterModelName = $model->getClusterModelName();
             $this->modelClass = get_class($model);
             $this->maxClusterSize = config('vector-lite.clusters_size', 500);
             $this->modelTable = $model->getTable();
 
             // e.g., if your model table is "vectors", this might be "vectors_count"
-            $this->countColumn = $model->getTable() . '_count';
+            $this->countColumn = $model->getTable().'_count';
         }
     }
 
@@ -68,7 +74,7 @@ class VectorLite {
             $model->{$this->matchColumn} = null;
             $model->save();
 
-            //Recalculate the cluster as new vector is created
+            // Recalculate the cluster as new vector is created
             $model->processCreated($model);
         }
 
@@ -84,13 +90,13 @@ class VectorLite {
             /** @var Model $this->model */
             $bestCluster = $this->clusterModelName::selectRaw(
                 "{$this->clusterTable}.id, {$this->clusterTable}.{$this->countColumn}, COSIM_CACHE({$model->getVectorHashColumn()}, {$this->clusterTable}.vector, ?, ?) as similarity",
-                [$model->{$model->vectorColumn . '_hash'}, $model->{$model->vectorColumn}]
+                [$model->{$model->vectorColumn.'_hash'}, $model->{$model->vectorColumn}]
             )->orderBy('similarity', 'desc')->first();
 
             if ($bestCluster) {
                 $this->clusterClass = get_class($bestCluster);
 
-                //Add to best cluster because it may be next best match there
+                // Add to best cluster because it may be next best match there
                 $this->updateModelWithCluster($model, $bestCluster, $bestCluster->similarity);
                 $this->cacheClusterOpeartion($bestCluster, 1);
 
@@ -148,7 +154,7 @@ class VectorLite {
             ->get();
 
         // Get the model that is the least similar in the cluster, and make a new cluster and assign it to model
-        $leastSimilarModel = $clusterVectors->shift(); //Remove the first out from the collection
+        $leastSimilarModel = $clusterVectors->shift(); // Remove the first out from the collection
         $newCluster = $this->createNewCluster($leastSimilarModel, 1);
         $this->cacheClusterOpeartion($fullCluster, -1);
         $this->updateModelWithCluster($leastSimilarModel, $newCluster, 1.0);
@@ -159,10 +165,10 @@ class VectorLite {
             /** @var Model $this->clusterClass */
             $bestCluster = $this->clusterClass::selectRaw(
                 "{$this->clusterTable}.id, {$this->clusterTable}.{$this->countColumn}, COSIM_CACHE({$fullCluster->getVectorHashColumn()}, {$this->clusterTable}.vector, ?, ?) as similarity",
-                [$leastMatchModel->{$leastMatchModel->vectorColumn . '_hash'}, $leastMatchModel->{$leastMatchModel->vectorColumn}]
+                [$leastMatchModel->{$leastMatchModel->vectorColumn.'_hash'}, $leastMatchModel->{$leastMatchModel->vectorColumn}]
             )->orderBy('similarity', 'desc')->get()->first();
 
-            //Round to 14 decimals because of what database column can hold
+            // Round to 14 decimals because of what database column can hold
             $bestSimilarity = round($bestCluster->similarity, 14);
             $leastMatchModelSimilarity = round($leastMatchModel->{$this->matchColumn}, 14);
 
@@ -177,8 +183,9 @@ class VectorLite {
         }
     }
 
-    public function cacheClusterOpeartion($cluster, $add = 1) {
-        if (!isset(self::$clusterCache[$cluster->id])) {
+    public function cacheClusterOpeartion($cluster, $add = 1)
+    {
+        if (! isset(self::$clusterCache[$cluster->id])) {
             self::$clusterCache[$cluster->id] = 0;
         }
         self::$clusterCache[$cluster->id] += $add;
@@ -224,5 +231,4 @@ class VectorLite {
     {
         return pack('f*', ...self::normalize($vector));
     }
-
 }
