@@ -133,6 +133,7 @@ class VectorLite
         ]);
 
         $clusterModel->save();
+
         return $clusterModel;
     }
 

@@ -24,6 +24,7 @@ trait VectorTestHelpers
     {
         $vector = $this->createVectorArray($dimensions);
         $binaryVector = VectorLite::normalizeToBinary($vector);
+
         return [
             'vector' => $isBatch ? $binaryVector : $vector,
             'vector_hash' => VectorLiteQueryBuilder::hashVectorBlob($binaryVector),

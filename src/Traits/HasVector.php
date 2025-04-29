@@ -167,7 +167,7 @@ trait HasVector
         // If not an array, assume it's already binary or handle error
         $binaryVector = VectorLite::normalizeToBinary($vector);
         $this->attributes[self::$vectorColumn] = $binaryVector;
-        $this->attributes[self::$vectorColumn . '_hash'] = VectorLiteQueryBuilder::hashVectorBlob($binaryVector);
+        $this->attributes[self::$vectorColumn.'_hash'] = VectorLiteQueryBuilder::hashVectorBlob($binaryVector);
     }
 
     public function cluster(): HasOne
