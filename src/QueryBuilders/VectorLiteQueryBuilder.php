@@ -5,7 +5,9 @@ namespace ThaKladd\VectorLite\QueryBuilders;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use ThaKladd\VectorLite\VectorLite;
 
 class VectorLiteQueryBuilder extends Builder
 {
@@ -18,19 +20,23 @@ class VectorLiteQueryBuilder extends Builder
         return $this;
     }
 
-    public function getVectorHashColumn(?Model $model = null): ?string
+    public function getVectorHashColumn(?Model $model): ?string
     {
+        $model = $model ?? $this->getModel();
         $columnExists = Schema::hasColumn($model->getTable(), $model::$vectorColumn.'_hash');
 
         return $columnExists ? $model->getTable().'.'.$model::$vectorColumn.'_hash' : null;
     }
 
-    public static function hashVectorBlob(string $string)
+    public static function hashVectorBlob(null|array|string $vector)
     {
-        return hash('xxh3', $string);
+        if (is_array($vector)) {
+            $vector = VectorLite::normalizeToBinary($vector);
+        }
+        return hash('xxh3', $vector);
     }
 
-    private function getCosimMethod($vector): string
+    private function getCosimMethod(null|array|string $vector): string
     {
         $model = $this->getModel();
         $vectorColumn = "{$model->getTable()}.{$model::$vectorColumn}";
@@ -97,11 +103,9 @@ class VectorLiteQueryBuilder extends Builder
     /**
      * Find the best match based on cosine similarity.
      */
-    public function findBestByVector(null|array|string $vector = null): ?self
+    public function findBestByVector(null|array|string $vector = null): ?Model
     {
-        $this->bestByVector($vector);
-
-        return $this->first();
+        return $this->bestByVector($vector)->first();
     }
 
     /**
@@ -109,18 +113,20 @@ class VectorLiteQueryBuilder extends Builder
      */
     public function searchBestByVector(null|array|string $vector = null, ?int $limit = null): Collection
     {
-        $this->bestByVector($vector, $limit);
-
-        return $this->get();
+        return $this->bestByVector($vector, $limit)->get();
     }
 
     public function bestByVector(null|array|string $vector = null, ?int $limit = null): Builder
     {
+        if (is_array($vector)) {
+            $vector = VectorLite::normalizeToBinary($vector);
+        }
+
         $model = $this->getModel();
         $cosimMethodCall = $this->getCosimMethod($vector);
 
         $query = $this->selectRaw("{$model->getTable()}.*, {$cosimMethodCall} as {$model::$similarityAlias}", [$vector])
-            ->whereRaw("{$model::$similarityAlias} >= ?", [0.0])
+            ->whereRaw("{$model::$similarityAlias} >= ?", [0])
             ->orderByRaw("{$model::$similarityAlias} DESC");
 
         if ($limit) {

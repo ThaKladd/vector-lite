@@ -61,8 +61,6 @@ trait VectorTestHelpers
 
     private function fillVectorClusterTable(int $amount = 1000, int $dimensions = 1536): void
     {
-        Artisan::call('vector-lite:cluster', ['table' => 'vectors']);
-
         $records = $this->createVectors($amount, $dimensions);
 
         foreach ($records as $record) {

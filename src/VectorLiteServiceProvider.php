@@ -5,6 +5,7 @@ namespace ThaKladd\VectorLite;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Spatie\LaravelPackageTools\Package;
 use Spatie\LaravelPackageTools\PackageServiceProvider;
 use ThaKladd\VectorLite\Commands\MakeVectorLiteClusterCommand;
@@ -38,10 +39,10 @@ class VectorLiteServiceProvider extends PackageServiceProvider
 
                 // Cache the unpacked vectors for the current session
                 if (! isset($cache[$queryId])) {
-                    $cache[$queryId] = unpack('f*', $binaryQueryVector);
+                    $cache[$queryId] = unpack('f*', hex2bin($binaryQueryVector));
                 }
                 if (! isset($cache[$rowId])) {
-                    $cache[$rowId] = unpack('f*', $binaryRowVector);
+                    $cache[$rowId] = unpack('f*', hex2bin($binaryRowVector));
                 }
 
                 if ($amount === 0) {
@@ -62,8 +63,8 @@ class VectorLiteServiceProvider extends PackageServiceProvider
             });
 
             DB::connection()->getPdo()->sqliteCreateFunction('COSIM', function ($binaryRowVector, $binaryQueryVector) {
-                $queryVector = unpack('f*', $binaryQueryVector);
-                $rowVector = unpack('f*', $binaryRowVector);
+                $queryVector = unpack('f*', hex2bin($binaryQueryVector));
+                $rowVector = unpack('f*', hex2bin($binaryRowVector));
                 $amount = count($queryVector);
                 $dotProduct = 0.0;
                 for ($i = 1; $i <= $amount; $i++) {
@@ -73,9 +74,9 @@ class VectorLiteServiceProvider extends PackageServiceProvider
                 return $dotProduct;
             });
 
-            Blueprint::macro('vectorLite', function (string $column, $length = null, $fixed = false) {
+            Blueprint::macro('vectorLite', function (string $column) {
                 /** @var Blueprint $this */
-                $this->binary($column, $length, $fixed)->nullable();
+                $this->text($column)->nullable();
                 $this->string($column.'_hash')->nullable();
             });
         }

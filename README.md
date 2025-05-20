@@ -15,7 +15,7 @@ It has also added support for clustering the vectors, so that you can group simi
 
 The idea was heavily inspired by an article by [Andreas Gohr](https://www.splitbrain.org/blog/2023-08/15-using_sqlite_as_vector_store_in_php)
 
-The package has tried to improve the speeds drastically from what the article suggested by a few methods of normalizing, binary packing, caching, and optional clustering. 
+The package has tried to improve the speeds drastically from what the article suggested by a few methods of normalizing, binary packing, caching, optional clustering, and smaller cluster vectors. 
 
 ### What can it do?
 In case you are not that familiar with vectors, cosine similarity, and clustering, I will give you a simple use case. 
@@ -34,7 +34,7 @@ With VectorLite you can get the power of vectors within your existing SQLite dat
 
 ### Comparison with other vector databases
 
-Using a solution like this is theory much slower, especially on big sets of vectors, but if done correctly it can be fast enough for your needs. I benchmarked and tested with Pinecone, and the results are interesting.
+Using a solution like this is in theory much slower, especially on big sets of vectors, but if done correctly, it can be fast enough for your needs. I benchmarked and tested with Pinecone, and the results are interesting.
 
 - Pinecone has a near O(1) search time, so it is much faster when vectors grow over about 800, but you need to connect to their api and pay for the service.
 - VectorLite becomes slower as the amount of vectors grown, but faster if you stay below 800 vectors - and it should work well with most projects where you limit the amount within a query anyway.

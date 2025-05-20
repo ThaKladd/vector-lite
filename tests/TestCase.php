@@ -5,28 +5,36 @@ namespace ThaKladd\VectorLite\Tests;
 use Dotenv\Dotenv;
 use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Database\Schema\Blueprint;
-use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Schema;
 use Orchestra\Testbench\TestCase as Orchestra;
 use ThaKladd\VectorLite\VectorLiteServiceProvider;
 
 class TestCase extends Orchestra
 {
-    use RefreshDatabase;
-
     protected function setUp(): void
     {
+        // 1) Boot the application and register your service provider (so $table->vectorLite() is available)
         parent::setUp();
+
+        // 2) Ensure our sqlite file exists (file-based so Artisan sees the same DB)
+        $path = database_path('testing.sqlite');
+        if (! file_exists($path)) {
+            touch($path);
+        }
+
+        // 3) Now do our manual schema + package commands
         $this->setUpDatabase();
 
-        \Illuminate\Support\Facades\Schema::setFacadeApplication($this->app);
-
+        // 4) Factory name guessing (optional)
         Factory::guessFactoryNamesUsing(
-            fn (string $modelName) => 'ThaKladd\\VectorLite\\Database\\Factories\\'.class_basename($modelName).'Factory'
+            fn(string $model) => 'ThaKladd\\VectorLite\\Database\\Factories\\' . class_basename($model) . 'Factory'
         );
     }
 
+    /**
+     * Register the package's service provider.
+     */
     protected function getPackageProviders($app)
     {
         return [
@@ -34,49 +42,86 @@ class TestCase extends Orchestra
         ];
     }
 
-    public function getEnvironmentSetUp($app)
+    /**
+     * Configure the sqlite connection to point at testing.sqlite.
+     */
+    protected function getEnvironmentSetUp($app)
     {
-        if (! is_file(database_path('testing.sqlite'))) {
-            touch(database_path('testing.sqlite'));
-        }
-        // config()->set('database.default', 'testing');
+        // Use the sqlite file, not :memory:
         $app['config']->set('database.default', 'sqlite');
         $app['config']->set('database.connections.sqlite', [
-            'driver' => 'sqlite',
-            'database' => database_path('testing.sqlite'), // ':memory:',
-            'prefix' => '',
+            'driver'   => 'sqlite',
+            'database' => database_path('testing.sqlite'),
+            'prefix'   => '',
+            // you can enable foreign key constraints if you like
+            'foreign_key_constraints' => true,
         ]);
+        $app['config']->set('database.migrations', []);
+        $app['config']->set('database.connections.sqlite.database', ':memory:');
 
-        // $app['config']->set('database.migrations', []);
-
-        // Optionally load your .env variables here if needed:
-        if (file_exists(__DIR__.'/../.env')) {
-            Dotenv::createImmutable(__DIR__.'/../')->load();
+        // If you have a .env in the package root, load it here:
+        if (file_exists(__DIR__ . '/../.env')) {
+            Dotenv::createImmutable(__DIR__ . '/../')->load();
         }
-
-        $app->singleton('db.schema', function ($app) {
-            return $app['db']->connection()->getSchemaBuilder();
-        });
-
-        // dd(DB::connection()->getPdo()->query('SELECT name FROM sqlite_master WHERE type = "table"')->fetchAll());
-        /*
-         foreach (\Illuminate\Support\Facades\File::allFiles(__DIR__ . '/database/migrations') as $migration) {
-            (include $migration->getRealPath())->up();
-         }
-         */
     }
 
+
+    /**
+     * Drop & recreate "vectors", then run the two VectorLite commands.
+     */
+    protected function setUpDatabase(): void
+    {
+        // 1) Drop any old tables
+        Schema::dropIfExists('vectors_clusters');
+        Schema::dropIfExists('vectors');
+
+        // 2) Create the base "vectors" table
+        Schema::create('vectors', function (Blueprint $table) {
+            $table->id();
+            $table->vectorLite('vector');
+            $table->timestamps();
+        });
+
+        // 3) Run the clustering command first (it creates vectors_clusters)
+        Artisan::call('vector-lite:cluster', [
+            'table' => 'vectors',
+        ]);
+
+    }
+
+    /*
     public function setUpDatabase(): void
     {
+        Schema::dropIfExists('vectors');
+        Schema::dropIfExists('vectors_clusters');
+        Schema::create('vectors', function (Blueprint $table) {
+            $table->id();
+            $table->vectorLite('vector');
+            $table->timestamps();
+        });
+
+        Artisan::call('vector-lite:cluster', ['table' => 'vectors']);
+        Artisan::call('vector-lite:make:cluster', [
+            'table' => 'vectors',
+        ]);
+
+
+        /*
         Schema::dropIfExists('vectors');
         Schema::create('vectors', function (Blueprint $table) {
             $table->id();
             // $table->integer('chunk')->index();
             $table->vectorLite('vector');
+
             // $table->vectorLite('vector_raw');
             // $table->vectorLite('vector_normalized');
             // $table->vectorLite('vector_packed');
             $table->timestamps();
         });
-    }
+        Schema::create('vectors_clusters', function (Blueprint $table) {
+            $table->id();
+            $table->vectorLite('vector');
+            $table->timestamps();
+        })
+    */
 }

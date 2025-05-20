@@ -3,7 +3,9 @@
 namespace ThaKladd\VectorLite\Commands;
 
 use Illuminate\Console\Command;
+use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Filesystem\Filesystem;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 
 use function Laravel\Prompts\select;
@@ -33,9 +35,37 @@ class VectorLiteClusterCommand extends Command
 
         // Delete the migration file if testing environment
         if (app()->environment('testing')) {
-            $this->call('migrate');
-            $this->info('Migrated.');
-            $this->files->delete(database_path("migrations/{$timestamp}_create_{$clusterModelTable}_table.php"));
+            //$this->call('migrate');
+            //$this->info('Migrated.');
+            //$this->files->delete(database_path("migrations/{$timestamp}_create_{$clusterModelTable}_table.php"));
+            // ─────────────────────────────────────────────
+            // In tests: create everything via Schema directly
+            // ─────────────────────────────────────────────
+
+            $foreignColumn = Str::singular($clusterModelTable);
+
+            Schema::dropIfExists($clusterModelTable);
+
+            Schema::create($clusterModelTable, function (Blueprint $table) use ($forTableName) {
+                $table->id();
+                $table->vectorLite('vector');
+                $table->integer("{$forTableName}_count")->default(0);
+                $table->timestamps();
+            });
+
+            Schema::table($forTableName, function (Blueprint $table) use ($clusterModelTable, $foreignColumn) {
+                $table->foreignId($foreignColumn.'_id')
+                    ->nullable()
+                    ->constrained($clusterModelTable)
+                    ->after('id');
+
+                $table->float($foreignColumn.'_match')
+                    ->nullable()
+                    ->after($foreignColumn.'_id');
+            });
+
+            $this->info("Created.");
+            return self::SUCCESS;
         } else {
             if (select('Run the migrations?', ['yes', 'no']) === 'yes') {
                 $this->call('migrate');
@@ -89,6 +119,7 @@ return new class extends Migration {
     }
 };
 STUB;
+
         $stub = str_replace('{{newTable}}', $newTable, $stub);
         $stub = str_replace('{{modelTable}}', $modelTable, $stub);
         $stub = str_replace('{{foreignColumn}}', $foreignColumn, $stub);

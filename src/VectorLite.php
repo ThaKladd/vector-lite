@@ -235,6 +235,6 @@ class VectorLite
      */
     public static function normalizeToBinary(array $vector): string
     {
-        return pack('f*', ...self::normalize($vector));
+        return bin2hex(pack('f*', ...self::normalize($vector)));
     }
 }
