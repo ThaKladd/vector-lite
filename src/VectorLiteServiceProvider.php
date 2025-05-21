@@ -81,13 +81,13 @@ class VectorLiteServiceProvider extends PackageServiceProvider
         }
 
         $this->publishes([
-            __DIR__.'/config/vector-lite.php' => config_path('vector-lite.php'),
+            __DIR__ . '/config/vector-lite.php' => config_path('vector-lite.php'),
         ], 'vector-lite-config');
     }
 
     public function register()
     {
-        $this->mergeConfigFrom(__DIR__.'/config/vector-lite.php', 'vector-lite');
+        $this->mergeConfigFrom(__DIR__ . '/config/vector-lite.php', 'vector-lite');
         $this->commands([
             VectorLiteClusterCommand::class,
             MakeVectorLiteClusterCommand::class,
