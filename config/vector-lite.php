@@ -26,12 +26,12 @@ return [
     | is between 100 and 1000 and decides the speed.
     |
     | Example: 1000 clusters of size 1000 will cover 1 mill vectors. Finding similar
-    |          cluster(ca 0.05s) and then vector(ca 0.05s) will total ca 0.1 sec.
-    |          Looking up 1 mill vectors directly, would take around a minute.
+    | cluster(ca 0.05s) and then vector(ca 0.05s) will total ca 0.1 sec.
+    | Looking up 1 mill vectors directly would take around a minute.
     |
     | Takeaways: VectorLite is ok up to a few million vectors, but not for billions.
-    |            You could reduce the amount of cluster to look up, by filtering
-    |            on other columns, giving room for even more vectors.
+    | You could reduce the amount of cluster to look up, by filtering
+    | on other columns, giving room for even more vectors.
     */
     'clusters_size' => 500, // Default to manage around 250000 vectors
 
