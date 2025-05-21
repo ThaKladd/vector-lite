@@ -160,10 +160,16 @@ The VectorLite class provides the following useful methods:
 use ThaKladd\VectorLite\VectorLite;
 ```
 
-## Testing
+## Testing & Fixing
 
+For running the tests:
 ```bash
 composer test
+```
+
+For fixing the code style:
+```bash
+ddev exec vendor/bin/pint
 ```
 
 ## Support us

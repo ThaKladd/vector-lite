@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Str;
 use Orchestra\Testbench\TestCase as Orchestra;
 use ThaKladd\VectorLite\VectorLiteServiceProvider;
 
@@ -28,7 +29,7 @@ class TestCase extends Orchestra
 
         // 4) Factory name guessing (optional)
         Factory::guessFactoryNamesUsing(
-            fn(string $model) => 'ThaKladd\\VectorLite\\Database\\Factories\\' . class_basename($model) . 'Factory'
+            fn (string $model) => 'ThaKladd\\VectorLite\\Database\\Factories\\'.class_basename($model).'Factory'
         );
     }
 
@@ -50,9 +51,9 @@ class TestCase extends Orchestra
         // Use the sqlite file, not :memory:
         $app['config']->set('database.default', 'sqlite');
         $app['config']->set('database.connections.sqlite', [
-            'driver'   => 'sqlite',
+            'driver' => 'sqlite',
             'database' => database_path('testing.sqlite'),
-            'prefix'   => '',
+            'prefix' => '',
             // you can enable foreign key constraints if you like
             'foreign_key_constraints' => true,
         ]);
@@ -60,33 +61,47 @@ class TestCase extends Orchestra
         $app['config']->set('database.connections.sqlite.database', ':memory:');
 
         // If you have a .env in the package root, load it here:
-        if (file_exists(__DIR__ . '/../.env')) {
-            Dotenv::createImmutable(__DIR__ . '/../')->load();
+        if (file_exists(__DIR__.'/../.env')) {
+            Dotenv::createImmutable(__DIR__.'/../')->load();
         }
     }
-
 
     /**
      * Drop & recreate "vectors", then run the two VectorLite commands.
      */
     protected function setUpDatabase(): void
     {
-        // 1) Drop any old tables
-        Schema::dropIfExists('vectors_clusters');
-        Schema::dropIfExists('vectors');
+        $tableName = 'vectors';
+        $clusterTableName = 'vectors_clusters';
 
-        // 2) Create the base "vectors" table
-        Schema::create('vectors', function (Blueprint $table) {
+        Schema::dropIfExists($clusterTableName);
+        Schema::dropIfExists($tableName);
+
+        Schema::create($tableName, function (Blueprint $table) {
             $table->id();
             $table->vectorLite('vector');
             $table->timestamps();
         });
 
-        // 3) Run the clustering command first (it creates vectors_clusters)
-        Artisan::call('vector-lite:cluster', [
-            'table' => 'vectors',
-        ]);
+        $foreignColumn = Str::singular($clusterTableName);
 
+        Schema::create($clusterTableName, function (Blueprint $table) use ($tableName) {
+            $table->id();
+            $table->vectorLite('vector');
+            $table->integer("{$tableName}_count")->default(0);
+            $table->timestamps();
+        });
+
+        Schema::table($clusterTableName, function (Blueprint $table) use ($clusterTableName, $foreignColumn) {
+            $table->foreignId($foreignColumn.'_id')
+                ->nullable()
+                ->constrained($clusterTableName)
+                ->after('id');
+
+            $table->float($foreignColumn.'_match')
+                ->nullable()
+                ->after($foreignColumn.'_id');
+        });
     }
 
     /*

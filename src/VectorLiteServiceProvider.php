@@ -5,7 +5,6 @@ namespace ThaKladd\VectorLite;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Log;
 use Spatie\LaravelPackageTools\Package;
 use Spatie\LaravelPackageTools\PackageServiceProvider;
 use ThaKladd\VectorLite\Commands\MakeVectorLiteClusterCommand;
@@ -39,10 +38,10 @@ class VectorLiteServiceProvider extends PackageServiceProvider
 
                 // Cache the unpacked vectors for the current session
                 if (! isset($cache[$queryId])) {
-                    $cache[$queryId] = unpack('f*', hex2bin($binaryQueryVector));
+                    $cache[$queryId] = unpack('f*', $binaryQueryVector);
                 }
                 if (! isset($cache[$rowId])) {
-                    $cache[$rowId] = unpack('f*', hex2bin($binaryRowVector));
+                    $cache[$rowId] = unpack('f*', $binaryRowVector);
                 }
 
                 if ($amount === 0) {
@@ -74,9 +73,9 @@ class VectorLiteServiceProvider extends PackageServiceProvider
                 return $dotProduct;
             });
 
-            Blueprint::macro('vectorLite', function (string $column) {
+            Blueprint::macro('vectorLite', function (string $column, $length = null, $fixed = false) {
                 /** @var Blueprint $this */
-                $this->text($column)->nullable();
+                $this->binary($column, $length, $fixed)->nullable();
                 $this->string($column.'_hash')->nullable();
             });
         }

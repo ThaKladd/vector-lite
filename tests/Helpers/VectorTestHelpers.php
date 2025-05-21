@@ -2,7 +2,6 @@
 
 namespace ThaKladd\VectorLite\Tests\Helpers;
 
-use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use ThaKladd\VectorLite\QueryBuilders\VectorLiteQueryBuilder;
 use ThaKladd\VectorLite\Tests\Models\Vector;

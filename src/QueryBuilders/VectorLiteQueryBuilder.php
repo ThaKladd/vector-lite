@@ -5,7 +5,6 @@ namespace ThaKladd\VectorLite\QueryBuilders;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use ThaKladd\VectorLite\VectorLite;
 
@@ -33,6 +32,7 @@ class VectorLiteQueryBuilder extends Builder
         if (is_array($vector)) {
             $vector = VectorLite::normalizeToBinary($vector);
         }
+
         return hash('xxh3', $vector);
     }
 
@@ -126,7 +126,6 @@ class VectorLiteQueryBuilder extends Builder
         $cosimMethodCall = $this->getCosimMethod($vector);
 
         $query = $this->selectRaw("{$model->getTable()}.*, {$cosimMethodCall} as {$model::$similarityAlias}", [$vector])
-            ->whereRaw("{$model::$similarityAlias} >= ?", [0])
             ->orderByRaw("{$model::$similarityAlias} DESC");
 
         if ($limit) {
