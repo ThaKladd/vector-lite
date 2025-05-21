@@ -172,6 +172,11 @@ For fixing the code style:
 ddev exec vendor/bin/pint
 ```
 
+For using PHPStan:
+```bash
+ddev exec vendor/bin/phpstan
+```
+
 ## Support us
 
 The package was made by using the package-skeleton-laravel by [Spatie](https://spatie.be/github-ad-click/vector-lite) - So go and support them.

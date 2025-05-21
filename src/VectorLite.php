@@ -5,6 +5,7 @@ namespace ThaKladd\VectorLite;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use ThaKladd\VectorLite\Tests\Models\VectorModel;
 
 class VectorLite
 {
@@ -28,7 +29,7 @@ class VectorLite
 
     public static array $clusterCache = [];
 
-    public function __construct(?Model $model = null)
+    public function __construct(?VectorModel $model = null)
     {
         if ($model) {
             $this->clusterTable = $model->getClusterTableName();
@@ -44,12 +45,12 @@ class VectorLite
         }
     }
 
-    public function processDelete(Model $model)
+    public function processDelete(VectorModel $model)
     {
         // Delete the model from the cluster
         $clusterId = $model->{$this->clusterForeignKey};
         if ($clusterId) {
-            /* @var Model $this->clusterModelName */
+            /* @var class-string<VectorModel> $this->clusterModelName */
             $cluster = $this->clusterModelName::find($clusterId);
             if ($cluster) {
                 $cluster->decrement($this->countColumn);
@@ -58,12 +59,12 @@ class VectorLite
         }
     }
 
-    public function processUpdated(Model $model): void
+    public function processUpdated(VectorModel $model): void
     {
         // Delete the model from the old cluster
         $oldClusterId = $model->{$this->clusterForeignKey};
         if ($oldClusterId) {
-            /* @var Model $this->clusterModelName */
+            /* @var class-string<VectorModel> $this->clusterModelName */
             $oldCluster = $this->clusterModelName::find($oldClusterId);
             if ($oldCluster) {
                 $oldCluster->decrement($this->countColumn);
@@ -75,21 +76,23 @@ class VectorLite
             $model->save();
 
             // Recalculate the cluster as new vector is created
-            $model->processCreated($model);
+            $this->processCreated($model);
         }
 
     }
 
-    public function processCreated(Model $model): void
+    public function processCreated(VectorModel $model): void
     {
         // This is called when a model is created - meaning,
         // it has an id and won't trigger again when updated
         DB::statement('PRAGMA journal_mode = WAL');
         DB::transaction(function () use ($model) {
             // Find the closest cluster by cosine similarity to the model’s vector.
-            /** @var Model $this->model */
-            $bestCluster = $this->clusterModelName::selectRaw(
-                "{$this->clusterTable}.id, {$this->clusterTable}.{$this->countColumn}, COSIM_CACHE({$model->getVectorHashColumn(new $this->clusterModelName)}, {$this->clusterTable}.vector, ?, ?) as similarity",
+            $clusterModelName = $this->clusterModelName;
+
+            /* @var class-string<VectorModel> $clusterModelName */
+            $bestCluster = $clusterModelName::selectRaw(
+                "{$this->clusterTable}.id, {$this->clusterTable}.{$this->countColumn}, COSIM_CACHE({$model->getVectorHashColumn(new $clusterModelName)}, {$this->clusterTable}.vector, ?, ?) as similarity",
                 [$model->{($model::$vectorColumn).'_hash'}, $model->{$model::$vectorColumn}]
             )->orderBy('similarity', 'desc')->first();
 
@@ -106,7 +109,7 @@ class VectorLite
                 }
             } else {
                 // No cluster found; create a new one and add it to model.
-                $newCluster = $this->createNewCluster($model, 1);
+                $newCluster = $this->createNewCluster($model);
                 $this->updateModelWithCluster($model, $newCluster, 1.0);
             }
 
@@ -120,11 +123,11 @@ class VectorLite
         });
     }
 
-    protected function createNewCluster(Model $model): object
+    protected function createNewCluster(VectorModel $model): object
     {
         $clusterModelName = $this->clusterModelName;
 
-        /* @var Model $clusterModelName */
+        /* @var class-string<VectorModel> $clusterModelName */
         $clusterModel = new $clusterModelName;
         $clusterModel->setRawAttributes([
             'vector' => $model->{$model::$vectorColumn},
@@ -137,10 +140,10 @@ class VectorLite
         return $clusterModel;
     }
 
-    protected function updateModelWithCluster(Model $model, Model $cluster, float $similarity): void
+    protected function updateModelWithCluster(VectorModel $model, VectorModel $cluster, float $similarity): void
     {
-        DB::table($this->modelTable)->where('id', $model->id)->update([
-            $this->clusterForeignKey => $cluster->id,
+        DB::table($this->modelTable)->where('id', $model->getKey())->update([
+            $this->clusterForeignKey => $cluster->getKey(),
             $this->matchColumn => $similarity,
         ]);
     }
@@ -152,33 +155,39 @@ class VectorLite
         // Until the cluster is the best cluster for the model
 
         // Get all models in the cluster, sorted by lowest similarity first.
-        /** @var Model $this->modelClass */
-        $clusterVectors = $this->modelClass::query()
+        $modelClassName = $this->modelClass;
+
+        /** @var class-string<VectorModel> $modelClassName */
+        $clusterVectors = $modelClassName::query()
             ->where($this->clusterForeignKey, $fullCluster->id)
             ->where($this->matchColumn, '<', 1.0)
             ->orderBy($this->matchColumn)
             ->get();
 
         // Get the model that is the least similar in the cluster, and make a new cluster and assign it to model
+        /** @var VectorModel $leastSimilarModel */
         $leastSimilarModel = $clusterVectors->shift(); // Remove the first out from the collection
-        $newCluster = $this->createNewCluster($leastSimilarModel, 1);
+        $newCluster = $this->createNewCluster($leastSimilarModel);
         $this->cacheClusterOpeartion($fullCluster, -1);
         $this->updateModelWithCluster($leastSimilarModel, $newCluster, 1.0);
 
         // Iterate through the rest of the models in the cluster.
+        /** @var VectorModel $leastMatchModel */
         foreach ($clusterVectors as $leastMatchModel) {
             // For each model in the cluster, find the best matching cluster.
-            /** @var Model $this->clusterClass */
-            $bestCluster = $this->clusterClass::selectRaw(
+            /** @var class-string<VectorModel> $clusterClassName */
+            $clusterClassName = $this->clusterClass;
+            $bestCluster = $clusterClassName::selectRaw(
                 "{$this->clusterTable}.id, {$this->clusterTable}.{$this->countColumn}, COSIM_CACHE({$fullCluster->getVectorHashColumn()}, {$this->clusterTable}.vector, ?, ?) as similarity",
                 [$leastMatchModel->{($leastMatchModel::$vectorColumn).'_hash'}, $leastMatchModel->{$leastMatchModel::$vectorColumn}]
-            )->orderBy('similarity', 'desc')->get()->first();
+            )->orderBy('similarity', 'desc')->first();
 
+            /** @var VectorModel $bestCluster */
             // Round to 14 decimals because of what database column can hold
             $bestSimilarity = round($bestCluster->similarity, 14);
             $leastMatchModelSimilarity = round($leastMatchModel->{$this->matchColumn}, 14);
 
-            if ($bestCluster && $bestSimilarity === $leastMatchModelSimilarity) {
+            if ($bestSimilarity === $leastMatchModelSimilarity) {
                 // The best is still the current cluster; no re-assignment needed.
                 break;
             }
