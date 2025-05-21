@@ -161,7 +161,7 @@ trait HasVector
      *
      * When you do $model->vector = [0.123, 0.456, ...], it will be stored as binary floats.
      */
-    protected function setVectorAttribute(array $vector): void
+    public function setVectorAttribute(array $vector): void
     {
         // Pack array of floats into binary format
         // If not an array, assume it's already binary or handle error

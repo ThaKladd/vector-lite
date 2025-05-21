@@ -6,7 +6,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Schema;
-use ThaKladd\VectorLite\Traits\HasVector;
+use ThaKladd\VectorLite\Tests\Models\VectorModel;
 use ThaKladd\VectorLite\VectorLite;
 
 class VectorLiteQueryBuilder extends Builder
@@ -20,41 +20,33 @@ class VectorLiteQueryBuilder extends Builder
         return $this;
     }
 
-    /**
-     * @return Model&HasVector
-     */
-    public function resolveModel(?Model $model = null): Model
+    public function resolveModel(?VectorModel $model = null): VectorModel
     {
-        $model = $model ?? $this->getModel();
-
-        /** @var Model&HasVector $model */
-        return $model;
+        return $model ?? $this->getModel();
     }
 
     /**
-     * @return class-string<Model&HasVector> $clusterModelName
+     * @return class-string<VectorModel>
      */
-    public function getClusterModelName(?Model $model = null): string
+    public function resolveModelName(?VectorModel $model = null): string
     {
-        $model = $this->resolveModel($model);
-
-        return $model->getClusterModelName();
+        return get_class($this->resolveModel($model));
     }
 
     /**
-     * @return Model&HasVector
+     * @return class-string<VectorModel>
      */
-    public function getClusterModel(?Model $model = null): Model
+    public function getClusterModelName(?VectorModel $model = null): string
     {
-        $clusterModelName = $this->getClusterModelName($model);
-
-        /** @var Model&HasVector $clusterModel */
-        $clusterModel = new $clusterModelName;
-
-        return $clusterModel;
+        return $this->resolveModel($model)->getClusterModelName();
     }
 
-    public function getVectorHashColumn(?Model $model): ?string
+    public function getClusterModel(?VectorModel $model = null): VectorModel
+    {
+        return new ($this->getClusterModelName($model));
+    }
+
+    public function getVectorHashColumn(?VectorModel $model): ?string
     {
         $model = $this->resolveModel($model);
         $columnExists = Schema::hasColumn($model->getTable(), $model::$vectorColumn.'_hash');
@@ -235,7 +227,7 @@ class VectorLiteQueryBuilder extends Builder
     /**
      * Exclude the current model from the query.
      */
-    public function excludeCurrent(?Model $model = null): Builder
+    public function excludeCurrent(?VectorModel $model = null): Builder
     {
         $current = $model ?? $this->getModel();
 
