@@ -22,7 +22,15 @@ class VectorLiteQueryBuilder extends Builder
 
     public function resolveModel(?VectorModel $model = null): VectorModel
     {
-        return $model ?? $this->getModel();
+        $candidate = $model ?? $this->getModel();
+
+        if (! $candidate instanceof VectorModel) {
+            throw new \UnexpectedValueException(
+                sprintf("Expected a %s, got %s", VectorModel::class, get_class($candidate))
+            );
+        }
+
+        return $candidate;
     }
 
     /**
@@ -68,7 +76,7 @@ class VectorLiteQueryBuilder extends Builder
         $model = $this->resolveModel();
         $vectorColumn = "{$model->getTable()}.{$model::$vectorColumn}";
         if ($model->useCache) {
-            $hashColumn = $this->getVectorHashColumn($model) ?? "'{$model->getTable()}:{$model->id}'";
+            $hashColumn = $this->getVectorHashColumn($model) ?? "'{$model->getTable()}:{$model->getKey()}'";
             $hashed = self::hashVectorBlob($vector);
 
             return "COSIM_CACHE({$hashColumn}, {$vectorColumn}, '{$hashed}', ?)";
@@ -80,15 +88,16 @@ class VectorLiteQueryBuilder extends Builder
     public function clusterIdsByVector(string $vector): VectorLiteQueryBuilder
     {
         $clusterModel = $this->getClusterModel();
-        $ids = $clusterModel->searchBestByVector($vector, $this->clusterLimit)->pluck('id')->toArray();
+        $clusterModelName = $this->getClusterModelName();
+        $ids = $clusterModelName::searchBestByVector($vector, $this->clusterLimit)->pluck('id')->toArray();
         if (empty($ids)) {
             return $this->whereRaw('1 = 0');
         }
         if (count($ids) === 1) {
-            return $this->where($this->getClusterForeignKey(), $ids[0]);
+            return $this->where($clusterModel->getClusterForeignKey(), $ids[0]);
         }
 
-        return $this->whereIn($this->getClusterForeignKey(), $ids);
+        return $this->whereIn($clusterModel->getClusterForeignKey(), $ids);
     }
 
     /**
@@ -115,7 +124,7 @@ class VectorLiteQueryBuilder extends Builder
      */
     public function selectSimilarity($vector): Builder
     {
-        $model = $this->getModel();
+        $model = $this->resolveModel();
         $cosimMethodCall = $this->getCosimMethod($vector);
 
         return $this->selectRaw("{$model->getTable()}.*, {$cosimMethodCall} as {$model::$similarityAlias}", [$vector]);
@@ -197,7 +206,7 @@ class VectorLiteQueryBuilder extends Builder
 
         // Determine if the similarity column is already part of the query.
         $hasSimilarityColumn = false;
-        if ($vector === $model::$similarityAlias || (! empty($this->columns) && is_array($this->columns) && in_array($model::$similarityAlias, $this->columns))) {
+        if ($vector === $model::$similarityAlias || (! empty($this->columns) && in_array($model::$similarityAlias, $this->columns))) {
             $hasSimilarityColumn = true;
         }
 
@@ -229,8 +238,8 @@ class VectorLiteQueryBuilder extends Builder
      */
     public function excludeCurrent(?VectorModel $model = null): Builder
     {
-        $current = $model ?? $this->getModel();
+        $current = $model ?? $this->resolveModel();
 
-        return $this->where($this->getModel()->getTable().'.id', '!=', $current->id);
+        return $this->where($this->resolveModel()->getTable().'.id', '!=', $current->getKey());
     }
 }

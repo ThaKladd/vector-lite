@@ -10,3 +10,6 @@ parameters:
     tmpDir: build/phpstan
     checkOctaneCompatibility: true
     checkModelProperties: true
+    ignoreErrors:
+        # ignore “env outside config directory” everywhere
+        - '#Called \'env\' outside of the config directory which returns null when the config is cached, use \'config\'#'
