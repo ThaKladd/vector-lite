@@ -11,4 +11,4 @@ parameters:
     checkOctaneCompatibility: true
     checkModelProperties: true
     ignoreErrors:
-        - '#Called \'env\' outside of the config directory which returns null when the config is cached, use \'config\'#'
+        - '#Called \'env\' outside of the config directory which returns null when the config is cached\, use \'config\'#'
