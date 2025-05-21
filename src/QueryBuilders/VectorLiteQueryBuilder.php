@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Schema;
+use ThaKladd\VectorLite\Traits\HasVector;
 use ThaKladd\VectorLite\VectorLite;
 
 class VectorLiteQueryBuilder extends Builder
@@ -19,9 +20,43 @@ class VectorLiteQueryBuilder extends Builder
         return $this;
     }
 
-    public function getVectorHashColumn(?Model $model): ?string
+    /**
+     * @return Model&HasVector
+     */
+    public function resolveModel(?Model $model = null): Model
     {
         $model = $model ?? $this->getModel();
+
+        /** @var Model&HasVector $model */
+        return $model;
+    }
+
+    /**
+     * @return class-string<Model&HasVector> $clusterModelName
+     */
+    public function getClusterModelName(?Model $model = null): string
+    {
+        $model = $this->resolveModel($model);
+
+        return $model->getClusterModelName();
+    }
+
+    /**
+     * @return Model&HasVector
+     */
+    public function getClusterModel(?Model $model = null): Model
+    {
+        $clusterModelName = $this->getClusterModelName($model);
+
+        /** @var Model&HasVector $clusterModel */
+        $clusterModel = new $clusterModelName;
+
+        return $clusterModel;
+    }
+
+    public function getVectorHashColumn(?Model $model): ?string
+    {
+        $model = $this->resolveModel($model);
         $columnExists = Schema::hasColumn($model->getTable(), $model::$vectorColumn.'_hash');
 
         return $columnExists ? $model->getTable().'.'.$model::$vectorColumn.'_hash' : null;
@@ -38,7 +73,7 @@ class VectorLiteQueryBuilder extends Builder
 
     private function getCosimMethod(null|array|string $vector): string
     {
-        $model = $this->getModel();
+        $model = $this->resolveModel();
         $vectorColumn = "{$model->getTable()}.{$model::$vectorColumn}";
         if ($model->useCache) {
             $hashColumn = $this->getVectorHashColumn($model) ?? "'{$model->getTable()}:{$model->id}'";
@@ -52,8 +87,7 @@ class VectorLiteQueryBuilder extends Builder
 
     public function clusterIdsByVector(string $vector): VectorLiteQueryBuilder
     {
-        $clusterClass = $this->getClusterModelName();
-        $clusterModel = new $clusterClass;
+        $clusterModel = $this->getClusterModel();
         $ids = $clusterModel->searchBestByVector($vector, $this->clusterLimit)->pluck('id')->toArray();
         if (empty($ids)) {
             return $this->whereRaw('1 = 0');
@@ -74,18 +108,14 @@ class VectorLiteQueryBuilder extends Builder
      */
     public function bestClustersByVector(string $vector, int $amount = 1): Collection
     {
-        $clusterClass = $this->getModel()->getClusterModelName();
-        $clusterModel = new $clusterClass;
-
-        return $clusterModel->searchBestByVector($vector, $amount);
+        return $this->getClusterModelName()::searchBestByVector($vector, $amount);
     }
 
     public function bestClusters(int $amount = 1): Collection
     {
-        $clusterClass = $this->getModel()->getClusterModelName();
-        $clusterModel = new $clusterClass;
+        $clusterClass = $this->getClusterModelName();
 
-        return $clusterModel->searchBestByVector($this->{$clusterModel::$vectorColumn}, $amount);
+        return $clusterClass::searchBestByVector($this->{$clusterClass::$vectorColumn}, $amount);
     }
 
     /**
@@ -94,7 +124,6 @@ class VectorLiteQueryBuilder extends Builder
     public function selectSimilarity($vector): Builder
     {
         $model = $this->getModel();
-        /* @var Model $modelClass */
         $cosimMethodCall = $this->getCosimMethod($vector);
 
         return $this->selectRaw("{$model->getTable()}.*, {$cosimMethodCall} as {$model::$similarityAlias}", [$vector]);
@@ -122,7 +151,7 @@ class VectorLiteQueryBuilder extends Builder
             $vector = VectorLite::normalizeToBinary($vector);
         }
 
-        $model = $this->getModel();
+        $model = $this->resolveModel();
         $cosimMethodCall = $this->getCosimMethod($vector);
 
         $query = $this->selectRaw("{$model->getTable()}.*, {$cosimMethodCall} as {$model::$similarityAlias}", [$vector])
@@ -170,19 +199,19 @@ class VectorLiteQueryBuilder extends Builder
         if (! in_array($operator, $allowed, true)) {
             throw new \InvalidArgumentException("Invalid operator [$operator] provided.");
         }
-        $model = $this->getModel();
 
+        $model = $this->resolveModel();
         $vector = $vector ?? $model::$similarityAlias;
 
         // Determine if the similarity column is already part of the query.
         $hasSimilarityColumn = false;
-        if ($vector === $model::$similarityAlias || (! empty($query->columns) && is_array($query->columns) && in_array($model::$similarityAlias, $query->columns))) {
+        if ($vector === $model::$similarityAlias || (! empty($this->columns) && is_array($this->columns) && in_array($model::$similarityAlias, $this->columns))) {
             $hasSimilarityColumn = true;
         }
 
         if ($hasSimilarityColumn) {
             // If the similarity column is already selected, use it in the HAVING clause.
-            return $query->having($model::$similarityAlias, $operator, $threshold);
+            return $this->having($model::$similarityAlias, $operator, $threshold);
         }
 
         // Otherwise, compute the similarity on the fly.
@@ -208,7 +237,7 @@ class VectorLiteQueryBuilder extends Builder
      */
     public function excludeCurrent(?Model $model = null): Builder
     {
-        $current = $model ?? $this;
+        $current = $model ?? $this->getModel();
 
         return $this->where($this->getModel()->getTable().'.id', '!=', $current->id);
     }
