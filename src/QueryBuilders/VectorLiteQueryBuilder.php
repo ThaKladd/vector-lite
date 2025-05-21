@@ -26,7 +26,7 @@ class VectorLiteQueryBuilder extends Builder
 
         if (! $candidate instanceof VectorModel) {
             throw new \UnexpectedValueException(
-                sprintf("Expected a %s, got %s", VectorModel::class, get_class($candidate))
+                sprintf('Expected a %s, got %s', VectorModel::class, get_class($candidate))
             );
         }
 
