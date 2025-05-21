@@ -1,6 +1,6 @@
 <?php
 
-namespace ThaKladd\VectorLite\Tests\Models;
+namespace ThaKladd\VectorLite\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use ThaKladd\VectorLite\Contracts\HasVectorType;

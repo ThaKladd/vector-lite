@@ -6,7 +6,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Schema;
-use ThaKladd\VectorLite\Tests\Models\VectorModel;
+use ThaKladd\VectorLite\Models\VectorModel;
 use ThaKladd\VectorLite\VectorLite;
 
 class VectorLiteQueryBuilder extends Builder

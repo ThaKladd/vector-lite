@@ -118,7 +118,7 @@ trait HasVector
 
     public function getUniqueRowIdAttribute(): string
     {
-        return $this->getTable().'_'.$this->id;
+        return $this->getTable().'_'.$this->getKey();
     }
 
     /**
