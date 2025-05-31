@@ -77,6 +77,8 @@ class VectorLiteServiceProvider extends PackageServiceProvider
                 /** @var Blueprint $this */
                 $this->binary($column, $length, $fixed)->nullable();
                 $this->string($column.'_hash')->nullable();
+                $this->binary($column.'_small', $length, $fixed)->nullable();
+                $this->string($column.'_small_hash')->nullable();
             });
         }
 

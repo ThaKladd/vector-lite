@@ -36,7 +36,7 @@ class EmbeddingService
                 'input' => $texts,
                 'model' => $this->embeddingModel,
                 'encoding_format' => 'float',
-                'dimensions' => $dimensions ?? 1536,
+                'dimensions' => $dimensions ?? config('vector-lite.default_dimensions'),
             ],
         ]);
 

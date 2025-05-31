@@ -6,7 +6,9 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
+use ThaKladd\VectorLite\Enums\ReduceBy;
 use ThaKladd\VectorLite\QueryBuilders\VectorLiteQueryBuilder;
+use ThaKladd\VectorLite\Services\EmbeddingService;
 use ThaKladd\VectorLite\Tests\Models\Vector;
 use ThaKladd\VectorLite\VectorLite;
 
@@ -18,6 +20,8 @@ trait HasVector
     public static string $similarityAlias = 'similarity';
 
     public static string $vectorColumn = 'vector';
+
+    public static string $vectorColumnSmall = 'vector_small';
 
     public bool $useCache = false;
 
@@ -176,5 +180,19 @@ trait HasVector
         $clusterModel = new $clusterModelName;
 
         return $this->hasOne($clusterModel::class);
+    }
+
+    public function createEmbedding(string $text, ?int $dimensions = null): array
+    {
+        $embeddingService = app(EmbeddingService::class);
+        $embedding = $embeddingService->createEmbedding($text, $dimensions);
+        $reducedEmbedding = [];
+        if(config('vector-lite.use_clustering_dimensions')) {
+            $dimensions = config('vector-lite.clustering_dimensions');
+            $reduceByMethod = config('vector-lite.reduction_method');
+            $vectorInput = $reduceByMethod === ReduceBy::NEW_EMBEDDING ? $text : $embedding;
+            $reducedEmbedding = $reduceByMethod->reduceVector($vectorInput, $dimensions);
+        }
+        return [$embedding, $reducedEmbedding];
     }
 }
