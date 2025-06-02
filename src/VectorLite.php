@@ -93,9 +93,9 @@ class VectorLite
             $clusterModelName = $this->clusterModelName;
 
             $smallVector = ($this->useSmallVector ? '_small' : '');
-            $vectorColumn = $this->clusterTable . '.vector' . $smallVector;
-            $modelVectorColumn = ($model::$vectorColumn) . $smallVector;
-            $modelVectorHash = $model->{$modelVectorColumn . '_hash'};
+            $vectorColumn = $this->clusterTable.'.vector'.$smallVector;
+            $modelVectorColumn = ($model::$vectorColumn).$smallVector;
+            $modelVectorHash = $model->{$modelVectorColumn.'_hash'};
             $modelVector = $model->$modelVectorColumn;
 
             /* @var class-string<\ThaKladd\VectorLite\Models\VectorModel> $clusterModelName */
@@ -135,14 +135,14 @@ class VectorLite
     {
         $clusterModelName = $this->clusterModelName;
         $smallVector = ($this->useSmallVector ? '_small' : '');
-        $modelVectorColumn = ($model::$vectorColumn) . $smallVector;
-        $modelVectorHash = $model->{$modelVectorColumn . '_hash'};
+        $modelVectorColumn = ($model::$vectorColumn).$smallVector;
+        $modelVectorHash = $model->{$modelVectorColumn.'_hash'};
 
         /* @var class-string<VectorModel> $clusterModelName */
         $clusterModel = new $clusterModelName;
         $clusterModel->setRawAttributes([
-            'vector' . $smallVector => $model->$modelVectorColumn,
-            'vector' . $smallVector . '_hash' => $model->$modelVectorHash,
+            'vector'.$smallVector => $model->$modelVectorColumn,
+            'vector'.$smallVector.'_hash' => $model->$modelVectorHash,
             $this->countColumn => 1,
         ]);
 
@@ -183,13 +183,13 @@ class VectorLite
         $this->updateModelWithCluster($leastSimilarModel, $newCluster, 1.0);
 
         $smallVector = ($this->useSmallVector ? '_small' : '');
-        $clusterVectorColumn = $this->clusterTable . '.vector' . $smallVector;
-        $modelVectorColumn = ($leastSimilarModel::$vectorColumn) . $smallVector;
+        $clusterVectorColumn = $this->clusterTable.'.vector'.$smallVector;
+        $modelVectorColumn = ($leastSimilarModel::$vectorColumn).$smallVector;
 
         // Iterate through the rest of the models in the cluster.
         /** @var \ThaKladd\VectorLite\Models\VectorModel $leastMatchModel */
         foreach ($clusterVectors as $leastMatchModel) {
-            $modelVectorHash = $leastMatchModel->{$modelVectorColumn . '_hash'};
+            $modelVectorHash = $leastMatchModel->{$modelVectorColumn.'_hash'};
             $modelVector = $leastMatchModel->$modelVectorColumn;
 
             // For each model in the cluster, find the best matching cluster.

@@ -36,8 +36,10 @@ class VectorLiteQueryBuilder extends Builder
     private function smallClusterVectorColumn(): string
     {
         $useSmall = config('vector-lite.use_clustering_dimensions', false);
+
         return $useSmall ? '_small' : '';
     }
+
     /**
      * @return class-string<VectorModel>
      */
@@ -63,7 +65,7 @@ class VectorLiteQueryBuilder extends Builder
     {
         $model = $this->resolveModel($model);
         $smallVectorColumn = $useSmall ? '_small' : '';
-        $columnExists = Schema::hasColumn($model->getTable(), $model::$vectorColumn . $smallVectorColumn . '_hash');
+        $columnExists = Schema::hasColumn($model->getTable(), $model::$vectorColumn.$smallVectorColumn.'_hash');
 
         return $columnExists ? $model->getTable().'.'.$model::$vectorColumn.'_hash' : null;
     }

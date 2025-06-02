@@ -187,12 +187,13 @@ trait HasVector
         $embeddingService = app(EmbeddingService::class);
         $embedding = $embeddingService->createEmbedding($text, $dimensions);
         $reducedEmbedding = [];
-        if(config('vector-lite.use_clustering_dimensions')) {
+        if (config('vector-lite.use_clustering_dimensions')) {
             $dimensions = config('vector-lite.clustering_dimensions');
             $reduceByMethod = config('vector-lite.reduction_method');
             $vectorInput = $reduceByMethod === ReduceBy::NEW_EMBEDDING ? $text : $embedding;
             $reducedEmbedding = $reduceByMethod->reduceVector($vectorInput, $dimensions);
         }
+
         return [$embedding, $reducedEmbedding];
     }
 }

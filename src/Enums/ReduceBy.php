@@ -55,6 +55,7 @@ enum ReduceBy: string
     private function createNewEmbedding(string $input, int $toDimensions): array
     {
         $embeddingService = app(EmbeddingService::class);
+
         return $embeddingService->createEmbedding($input, $toDimensions);
     }
 
