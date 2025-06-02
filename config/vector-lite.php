@@ -37,7 +37,7 @@ return [
     | Since reducing dimensions is an extra step at insert time, there are
     | these following options available:
     | - 'rpm' (default): Random Projection Method, which reduces by random projection.
-    | - 'new': Creates a new embedding with the specified dimensions. This requires an OpenAI API key.
+    | - 'new': Creates a new embedding with the specified dimensions. This requires an OpenAI API key. TODO: WORK OUT WHEN LONG VECTOR IS PRESENT BUT NO SHORT
     | - 'chunked_aggregation': Aggregating mean chunks of the vector into a new one.
     | - 'pca': Principal Component Analysis, RPM, but PCA when total vectors are more than 10,000. TODO: NOT YET IMPLEMENTED. NEED PYTHON.
     */

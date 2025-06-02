@@ -26,6 +26,8 @@ class VectorLite
 
     protected string $modelTable = '';
 
+    protected bool $useSmallVector = false;
+
     public static array $clusterCache = [];
 
     public function __construct(?VectorModel $model = null)
@@ -38,6 +40,7 @@ class VectorLite
             $this->modelClass = get_class($model);
             $this->maxClusterSize = config('vector-lite.clusters_size', 500);
             $this->modelTable = $model->getTable();
+            $this->useSmallVector = config('vector-lite.use_clustering_dimensions', false);
 
             // e.g., if your model table is "vectors", this might be "vectors_count"
             $this->countColumn = $model->getTable().'_count';
@@ -89,10 +92,16 @@ class VectorLite
             // Find the closest cluster by cosine similarity to the model’s vector.
             $clusterModelName = $this->clusterModelName;
 
+            $smallVector = ($this->useSmallVector ? '_small' : '');
+            $vectorColumn = $this->clusterTable . '.vector' . $smallVector;
+            $modelVectorColumn = ($model::$vectorColumn) . $smallVector;
+            $modelVectorHash = $model->{$modelVectorColumn . '_hash'};
+            $modelVector = $model->$modelVectorColumn;
+
             /* @var class-string<\ThaKladd\VectorLite\Models\VectorModel> $clusterModelName */
             $bestCluster = $clusterModelName::selectRaw(
-                "{$this->clusterTable}.id, {$this->clusterTable}.{$this->countColumn}, COSIM_CACHE({$model->getVectorHashColumn(new $clusterModelName)}, {$this->clusterTable}.vector, ?, ?) as similarity",
-                [$model->{($model::$vectorColumn).'_hash'}, $model->{$model::$vectorColumn}]
+                "{$this->clusterTable}.id, {$this->clusterTable}.{$this->countColumn}, COSIM_CACHE({$model->getVectorHashColumn(new $clusterModelName, $this->useSmallVector)}, {$vectorColumn}, ?, ?) as similarity",
+                [$modelVectorHash, $modelVector]
             )->orderBy('similarity', 'desc')->first();
 
             if ($bestCluster) {
@@ -125,12 +134,15 @@ class VectorLite
     protected function createNewCluster(VectorModel $model): object
     {
         $clusterModelName = $this->clusterModelName;
+        $smallVector = ($this->useSmallVector ? '_small' : '');
+        $modelVectorColumn = ($model::$vectorColumn) . $smallVector;
+        $modelVectorHash = $model->{$modelVectorColumn . '_hash'};
 
         /* @var class-string<VectorModel> $clusterModelName */
         $clusterModel = new $clusterModelName;
         $clusterModel->setRawAttributes([
-            'vector' => $model->{$model::$vectorColumn},
-            'vector_hash' => $model->{($model::$vectorColumn).'_hash'},
+            'vector' . $smallVector => $model->$modelVectorColumn,
+            'vector' . $smallVector . '_hash' => $model->$modelVectorHash,
             $this->countColumn => 1,
         ]);
 
@@ -170,15 +182,22 @@ class VectorLite
         $this->cacheClusterOpeartion($fullCluster, -1);
         $this->updateModelWithCluster($leastSimilarModel, $newCluster, 1.0);
 
+        $smallVector = ($this->useSmallVector ? '_small' : '');
+        $clusterVectorColumn = $this->clusterTable . '.vector' . $smallVector;
+        $modelVectorColumn = ($leastSimilarModel::$vectorColumn) . $smallVector;
+
         // Iterate through the rest of the models in the cluster.
         /** @var \ThaKladd\VectorLite\Models\VectorModel $leastMatchModel */
         foreach ($clusterVectors as $leastMatchModel) {
+            $modelVectorHash = $leastMatchModel->{$modelVectorColumn . '_hash'};
+            $modelVector = $leastMatchModel->$modelVectorColumn;
+
             // For each model in the cluster, find the best matching cluster.
             /** @var class-string<\ThaKladd\VectorLite\Models\VectorModel> $clusterClassName */
             $clusterClassName = $this->clusterClass;
             $bestCluster = $clusterClassName::selectRaw(
-                "{$this->clusterTable}.id, {$this->clusterTable}.{$this->countColumn}, COSIM_CACHE({$fullCluster->getVectorHashColumn()}, {$this->clusterTable}.vector, ?, ?) as similarity",
-                [$leastMatchModel->{($leastMatchModel::$vectorColumn).'_hash'}, $leastMatchModel->{$leastMatchModel::$vectorColumn}]
+                "{$this->clusterTable}.id, {$this->clusterTable}.{$this->countColumn}, COSIM_CACHE({$fullCluster->getVectorHashColumn(null, $this->useSmallVector)}, {$clusterVectorColumn}, ?, ?) as similarity",
+                [$modelVectorHash, $modelVector]
             )->orderBy('similarity', 'desc')->first();
 
             /** @var \ThaKladd\VectorLite\Models\VectorModel $bestCluster */

@@ -33,6 +33,11 @@ class VectorLiteQueryBuilder extends Builder
         return $candidate;
     }
 
+    private function smallClusterVectorColumn(): string
+    {
+        $useSmall = config('vector-lite.use_clustering_dimensions', false);
+        return $useSmall ? '_small' : '';
+    }
     /**
      * @return class-string<VectorModel>
      */
@@ -54,10 +59,11 @@ class VectorLiteQueryBuilder extends Builder
         return new ($this->getClusterModelName($model));
     }
 
-    public function getVectorHashColumn(?VectorModel $model): ?string
+    public function getVectorHashColumn(?VectorModel $model = null, bool $useSmall = false): ?string
     {
         $model = $this->resolveModel($model);
-        $columnExists = Schema::hasColumn($model->getTable(), $model::$vectorColumn.'_hash');
+        $smallVectorColumn = $useSmall ? '_small' : '';
+        $columnExists = Schema::hasColumn($model->getTable(), $model::$vectorColumn . $smallVectorColumn . '_hash');
 
         return $columnExists ? $model->getTable().'.'.$model::$vectorColumn.'_hash' : null;
     }
@@ -73,6 +79,7 @@ class VectorLiteQueryBuilder extends Builder
 
     private function getCosimMethod(null|array|string $vector): string
     {
+        // TODO: If cluster -> if use small -> make vector small
         $model = $this->resolveModel();
         $vectorColumn = "{$model->getTable()}.{$model::$vectorColumn}";
         if ($model->useCache) {
@@ -87,6 +94,7 @@ class VectorLiteQueryBuilder extends Builder
 
     public function clusterIdsByVector(string $vector): VectorLiteQueryBuilder
     {
+        // TODO: If cluster -> if use small -> make vector small
         $clusterModel = $this->getClusterModel();
         $clusterModelName = $this->getClusterModelName();
         $ids = $clusterModelName::searchBestByVector($vector, $this->clusterLimit)->pluck('id')->toArray();
@@ -114,6 +122,7 @@ class VectorLiteQueryBuilder extends Builder
 
     public function bestClusters(int $amount = 1): Collection
     {
+        // TODO: If cluster -> if use small -> use _small vector column
         $clusterClass = $this->getClusterModelName();
 
         return $clusterClass::searchBestByVector($this->{$clusterClass::$vectorColumn}, $amount);
@@ -124,6 +133,7 @@ class VectorLiteQueryBuilder extends Builder
      */
     public function selectSimilarity($vector): Builder
     {
+        // TODO: If cluster -> if use small -> make vector small
         $model = $this->resolveModel();
         $cosimMethodCall = $this->getCosimMethod($vector);
 
@@ -135,6 +145,7 @@ class VectorLiteQueryBuilder extends Builder
      */
     public function findBestByVector(null|array|string $vector = null): ?Model
     {
+        // TODO: If cluster -> if use small -> make vector small
         return $this->bestByVector($vector)->first();
     }
 
@@ -143,11 +154,13 @@ class VectorLiteQueryBuilder extends Builder
      */
     public function searchBestByVector(null|array|string $vector = null, ?int $limit = null): Collection
     {
+        // TODO: If cluster -> if use small -> make vector small
         return $this->bestByVector($vector, $limit)->get();
     }
 
     public function bestByVector(null|array|string $vector = null, ?int $limit = null): Builder
     {
+        // TODO: If cluster -> if use small -> make vector small
         if (is_array($vector)) {
             $vector = VectorLite::normalizeToBinary($vector);
         }
@@ -170,6 +183,7 @@ class VectorLiteQueryBuilder extends Builder
      */
     public function whereVector(null|array|string $vector = null, string $operator = '>', float $threshold = 0.0): Builder
     {
+        // TODO: If cluster -> if use small -> make vector small
         // Validate the operator to avoid SQL injection.
         $allowed = ['=', '>', '<', '>=', '<=', '<>', '!='];
         if (! in_array($operator, $allowed, true)) {
@@ -185,6 +199,7 @@ class VectorLiteQueryBuilder extends Builder
      */
     public function whereVectorBetween(null|array|string $vector = null, float $min = 0.0, float $max = 1.0): Builder
     {
+        // TODO: If cluster -> if use small -> make vector small
         $cosimMethodCall = $this->getCosimMethod($vector);
 
         return $this->whereRaw("$cosimMethodCall BETWEEN ? AND ?", [$vector, $min, $max]);
@@ -195,6 +210,7 @@ class VectorLiteQueryBuilder extends Builder
      */
     public function havingVector(null|string|array $vector = null, string $operator = '>', float $threshold = 0.0): Builder
     {
+        // TODO: If cluster -> if use small -> make vector small
         // Validate the operator.
         $allowed = ['=', '>', '<', '>=', '<=', '<>', '!='];
         if (! in_array($operator, $allowed, true)) {
@@ -227,6 +243,7 @@ class VectorLiteQueryBuilder extends Builder
      */
     public function orderBySimilarity($vector, string $direction = 'desc'): Builder
     {
+        // TODO: If cluster -> if use small -> make vector small
         $direction = strtolower($direction) === 'asc' ? 'asc' : 'desc';
         $cosimMethodCall = $this->getCosimMethod($vector);
 
