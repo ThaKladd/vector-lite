@@ -45,8 +45,8 @@ class VectorLiteQueryBuilder extends Builder
     }
 
     /**
-    * @phpstan-ignore-next-line
-    */
+     * @phpstan-ignore-next-line
+     */
     private function fixVectorSize(array|string $vector): string
     {
         $model = $this->resolveModel();
@@ -178,6 +178,7 @@ class VectorLiteQueryBuilder extends Builder
         }
 
         $this->whereIn($clusterModel->getClusterForeignKey(), $ids);
+
         return $this;
     }
 
@@ -214,31 +215,30 @@ class VectorLiteQueryBuilder extends Builder
         $cosimMethodCall = $this->getCosimMethod($vector);
 
         $this->selectRaw("{$model->getTable()}.*, {$cosimMethodCall} as {$model::$similarityAlias}", [$vector]);
+
         return $this;
     }
 
     /**
      * Find the best match based on vector model using cosine similarity.
-     *
-     * @return \ThaKladd\VectorLite\Models\VectorModel|null
      */
     public function findBestByVectorModel(VectorModel $model): ?VectorModel
     {
         /** @var VectorModel|null $result */
         $result = $this->bestByVector($model)->first();
+
         return $result;
     }
 
     /**
      * Find the best match based on cosine similarity.
-     *
-     * @return \ThaKladd\VectorLite\Models\VectorModel|null
      */
     public function findBestByVector(null|array|string $vector = null): ?VectorModel
     {
         // TODO: If cluster -> if use small -> make vector small
         /** @var VectorModel|null $result */
         $result = $this->bestByVector($vector)->first();
+
         return $result;
     }
 
@@ -262,6 +262,7 @@ class VectorLiteQueryBuilder extends Builder
     public function bestByVectorModel(VectorModel $model, ?int $limit = null): static
     {
         $this->withoutModels($model)->bestByVector($model->$model::$vectorColumn, $limit);
+
         return $this;
     }
 
@@ -278,7 +279,7 @@ class VectorLiteQueryBuilder extends Builder
         $this->selectRaw("{$model->getTable()}.*, {$cosimMethodCall} as {$model::$similarityAlias}", [$vector])
             ->orderByRaw("{$model::$similarityAlias} DESC");
 
-        if($model->getKey()) {
+        if ($model->getKey()) {
             $this->withoutModels($model);
         }
 
@@ -316,6 +317,7 @@ class VectorLiteQueryBuilder extends Builder
         $cosimMethodCall = $this->getCosimMethod($vector);
 
         $this->whereRaw("$cosimMethodCall BETWEEN ? AND ?", [$vector, $min, $max]);
+
         return $this;
     }
 
@@ -343,6 +345,7 @@ class VectorLiteQueryBuilder extends Builder
         if ($hasSimilarityColumn) {
             // If the similarity column is already selected, use it in the HAVING clause.
             $this->having($model::$similarityAlias, $operator, $threshold);
+
             return $this;
         }
 
@@ -351,6 +354,7 @@ class VectorLiteQueryBuilder extends Builder
         $cosimMethodCall = $this->getCosimMethod($vector);
 
         $this->havingRaw("$cosimMethodCall $operator ?", [$vector, $threshold]);
+
         return $this;
     }
 
@@ -364,6 +368,7 @@ class VectorLiteQueryBuilder extends Builder
         $cosimMethodCall = $this->getCosimMethod($vector);
 
         $this->orderByRaw("$cosimMethodCall $direction", [$vector]);
+
         return $this;
     }
 
@@ -373,6 +378,7 @@ class VectorLiteQueryBuilder extends Builder
     public function orderBySimilarityToModel(VectorModel $model, string $direction = 'desc'): static
     {
         $this->orderBySimilarity($model->{$model::$vectorColumn}, $direction);
+
         return $this;
     }
 
@@ -426,6 +432,7 @@ class VectorLiteQueryBuilder extends Builder
     public function withoutSelf(): static
     {
         $this->withoutModels($this->resolveModel());
+
         return $this;
     }
 
@@ -435,6 +442,7 @@ class VectorLiteQueryBuilder extends Builder
     public function includeSelf(): static
     {
         $this->orWhere($this->qualifiedKeyName(), '=', $this->resolveModel()->getKey());
+
         return $this;
     }
 }
