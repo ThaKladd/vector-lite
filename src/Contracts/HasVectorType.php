@@ -17,6 +17,8 @@ interface HasVectorType
 
     public function getClusterModelName(): string;
 
+    public function isCluster(): bool;
+
     public function getModelName(): string;
 
     public function getUniqueRowIdAttribute(): string;

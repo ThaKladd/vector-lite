@@ -109,7 +109,7 @@ class VectorLite
 
                 // Add to best cluster because it may be next best match there
                 $this->updateModelWithCluster($model, $bestCluster, $bestCluster->similarity);
-                $this->cacheClusterOpeartion($bestCluster, 1);
+                $this->cacheClusterOperation($bestCluster, 1);
 
                 if ($bestCluster->{$this->countColumn} >= $this->maxClusterSize) {
                     // The cluster is full. Handle full-cluster logic.
@@ -179,7 +179,7 @@ class VectorLite
         /** @var \ThaKladd\VectorLite\Models\VectorModel $leastSimilarModel */
         $leastSimilarModel = $clusterVectors->shift(); // Remove the first out from the collection
         $newCluster = $this->createNewCluster($leastSimilarModel);
-        $this->cacheClusterOpeartion($fullCluster, -1);
+        $this->cacheClusterOperation($fullCluster, -1);
         $this->updateModelWithCluster($leastSimilarModel, $newCluster, 1.0);
 
         $smallVector = ($this->useSmallVector ? '_small' : '');
@@ -210,13 +210,13 @@ class VectorLite
                 break;
             }
 
-            $this->cacheClusterOpeartion($fullCluster, -1);
+            $this->cacheClusterOperation($fullCluster, -1);
             $this->updateModelWithCluster($leastMatchModel, $bestCluster, $bestCluster->similarity);
-            $this->cacheClusterOpeartion($bestCluster, 1);
+            $this->cacheClusterOperation($bestCluster, 1);
         }
     }
 
-    public function cacheClusterOpeartion($cluster, $add = 1)
+    public function cacheClusterOperation($cluster, $add = 1)
     {
         if (! isset(self::$clusterCache[$cluster->id])) {
             self::$clusterCache[$cluster->id] = 0;
@@ -254,14 +254,27 @@ class VectorLite
             $vector[$i] *= $inv;
         }
 
-        return $vector;
+        return [$vector, $norm];
+    }
+
+    /**
+     * Denormalize a vector using the original norm.
+     */
+    public static function denormalize(array $normalizedVector, float $originalNorm): array
+    {
+        $n = count($normalizedVector);
+        for ($i = 1; $i <= $n; $i++) {
+            $normalizedVector[$i] *= $originalNorm;
+        }
+        return $normalizedVector;
     }
 
     /**
      * Normalize a vector to binary.
      */
-    public static function normalizeToBinary(array $vector): string
+    public static function normalizeToBinary(array $vector): array
     {
-        return pack('f*', ...self::normalize($vector));
+        [$normalVector, $norm] = self::normalize($vector);
+        return [pack('f*', ...$normalVector), $norm];
     }
 }

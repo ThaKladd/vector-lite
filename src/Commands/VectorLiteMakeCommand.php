@@ -74,9 +74,7 @@ return new class extends Migration {
     public function down()
     {
         Schema::table('{{$model}}', function (Blueprint $table) {
-            $table->dropColumn('vector');
-            $table->dropColumn('vector_small');
-            $table->dropColumn('vector_hash');
+            $table->dropVectorLite('vector');
         });
     }
 };

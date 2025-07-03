@@ -15,6 +15,9 @@ class VectorBinaryCast implements CastsAttributes
 
     public function set(Model $model, string $key, mixed $value, array $attributes)
     {
-        return VectorLite::normalizeToBinary($value);
+        [$binaryVector, $norm] = VectorLite::normalizeToBinary($value);
+
+        $model->setAttribute($key . '_norm', $norm);
+        return $binaryVector;
     }
 }

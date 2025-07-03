@@ -6,14 +6,16 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Schema;
+use ThaKladd\VectorLite\Enums\ReduceBy;
 use ThaKladd\VectorLite\Models\VectorModel;
+use ThaKladd\VectorLite\Tests\Models\VectorsCluster;
 use ThaKladd\VectorLite\VectorLite;
 
 class VectorLiteQueryBuilder extends Builder
 {
     protected int $clusterLimit = 1;
 
-    public function clusterAmount($limit)
+    public function clusterAmount(int $limit): static
     {
         $this->clusterLimit = $limit;
 
@@ -33,11 +35,37 @@ class VectorLiteQueryBuilder extends Builder
         return $candidate;
     }
 
+    /**
+     * If a different clustering dimension is used,
+     * the column column needs to be amended
+     */
     private function smallClusterVectorColumn(): string
     {
         $useSmall = config('vector-lite.use_clustering_dimensions', false);
 
         return $useSmall ? '_small' : '';
+    }
+
+    private function fixVectorSize(array|string $vector): string
+    {
+        $model = $this->resolveModel();
+        if($model->isCluster() && $this->smallClusterVectorColumn()) {
+            $dimensions = config('vector-lite.clustering_dimensions');
+            $reduceByMethod = config('vector-lite.reduction_method');
+            return $reduceByMethod->reduceVector($vector, $dimensions);
+        }
+
+        return $vector;
+    }
+
+
+    /**
+     * Gets the qualified key name, table.id
+     */
+    protected function qualifiedKeyName(?VectorModel $model = null): string
+    {
+        $resolvedModel = $this->resolveModel($model);
+        return $resolvedModel->getTable() . '.' . $resolvedModel->getKeyName();
     }
 
     /**
@@ -61,33 +89,70 @@ class VectorLiteQueryBuilder extends Builder
         return new ($this->getClusterModelName($model));
     }
 
-    public function getVectorHashColumn(?VectorModel $model = null, bool $useSmall = false): ?string
-    {
-        $model = $this->resolveModel($model);
-        $smallVectorColumn = $useSmall ? '_small' : '';
-        $columnExists = Schema::hasColumn($model->getTable(), $model::$vectorColumn.$smallVectorColumn.'_hash');
-
-        return $columnExists ? $model->getTable().'.'.$model::$vectorColumn.'_hash' : null;
+    public function isCluster(): bool {
+        return str_ends_with($this->getModel()::class, 'Cluster');
     }
 
+
+    /**
+     * Filters the input to an array of keys
+     */
+    protected function filterToKeys(null | iterable | VectorModel $models): array
+    {
+        $models = Collection::wrap($models);
+        return $models->map(function ($model) {
+            if (! $model instanceof VectorModel) {
+                throw new \InvalidArgumentException('Model to exclude has to be a VectorModel.');
+            }
+            return $model->getKey();
+        })->filter()->all();
+    }
+
+    /**
+     * Gets the hash column for the vector, including if the small vector is used
+     * If there is no hash column, then use a table:id as the unique identifier
+     */
+    public function getVectorHashColumn(?VectorModel $model = null): string
+    {
+        $model = $this->resolveModel($model);
+        $smallVectorColumn = $model->isCluster() ? $this->smallClusterVectorColumn() : '';
+        $column = $model::$vectorColumn.'_hash';
+        $smallColumn = $model::$vectorColumn.$smallVectorColumn.'_hash';
+
+        if(Schema::hasColumn($model->getTable(), $smallColumn)) {
+            return $smallColumn;
+        } else if(Schema::hasColumn($model->getTable(), $column)) {
+            return $column;
+        }
+
+        return "'{$model->getTable()}:{$model->getKey()}'";
+    }
+
+    /**
+     * Hashes the vector blob
+     */
     public static function hashVectorBlob(null|array|string $vector)
     {
         if (is_array($vector)) {
-            $vector = VectorLite::normalizeToBinary($vector);
+            [$vector, $norm] = VectorLite::normalizeToBinary($vector);
         }
 
         return hash('xxh3', $vector);
     }
 
+    /**
+     * Get the the Cosine Similarity method to use in the query
+     * The method needs one argument for the binding,
+     * that is the same vector that is passed here
+     */
     private function getCosimMethod(null|array|string $vector): string
     {
         // TODO: If cluster -> if use small -> make vector small
         $model = $this->resolveModel();
         $vectorColumn = "{$model->getTable()}.{$model::$vectorColumn}";
         if ($model->useCache) {
-            $hashColumn = $this->getVectorHashColumn($model) ?? "'{$model->getTable()}:{$model->getKey()}'";
+            $hashColumn = $this->getVectorHashColumn($model);
             $hashed = self::hashVectorBlob($vector);
-
             return "COSIM_CACHE({$hashColumn}, {$vectorColumn}, '{$hashed}', ?)";
         } else {
             return "COSIM({$vectorColumn}, ?)";
@@ -122,6 +187,9 @@ class VectorLiteQueryBuilder extends Builder
         return $this->getClusterModelName()::searchBestByVector($vector, $amount);
     }
 
+    /**
+     * Search for the best clusters based on current model
+     */
     public function bestClusters(int $amount = 1): Collection
     {
         // TODO: If cluster -> if use small -> use _small vector column
@@ -143,12 +211,28 @@ class VectorLiteQueryBuilder extends Builder
     }
 
     /**
+     * Find the best match based on vector model using cosine similarity.
+     */
+    public function findBestByVectorModel(VectorModel $model): ?VectorModel
+    {
+        return $this->bestByVector($model)->first();
+    }
+
+    /**
      * Find the best match based on cosine similarity.
      */
-    public function findBestByVector(null|array|string $vector = null): ?Model
+    public function findBestByVector(null|array|string $vector = null): ?VectorModel
     {
         // TODO: If cluster -> if use small -> make vector small
         return $this->bestByVector($vector)->first();
+    }
+
+    /**
+     * Search for the best matches using vector model based on cosine similarity.
+     */
+    public function searchBestByVectorModel(VectorModel $model, ?int $limit = null): Collection
+    {
+        return $this->bestByVector($model, $limit)->get();
     }
 
     /**
@@ -160,11 +244,20 @@ class VectorLiteQueryBuilder extends Builder
         return $this->bestByVector($vector, $limit)->get();
     }
 
-    public function bestByVector(null|array|string $vector = null, ?int $limit = null): Builder
+
+    public function bestByVectorModel(VectorModel $model, ?int $limit = null) {
+        return $this->withoutModels($model)->bestByVector($model->$model::$vectorColumn, $limit);
+    }
+
+    public function bestByVector(null|array|string $vector = null, ?int $limit = null): static
     {
+        if($model = $this->getModel()) {
+            $this->withoutModels($model);
+        }
+
         // TODO: If cluster -> if use small -> make vector small
         if (is_array($vector)) {
-            $vector = VectorLite::normalizeToBinary($vector);
+            [$vector, $norm] = VectorLite::normalizeToBinary($vector);
         }
 
         $model = $this->resolveModel();
@@ -183,7 +276,7 @@ class VectorLiteQueryBuilder extends Builder
     /**
      * Add a where clause based on cosine similarity.
      */
-    public function whereVector(null|array|string $vector = null, string $operator = '>', float $threshold = 0.0): Builder
+    public function whereVector(null|array|string $vector = null, string $operator = '>', float $threshold = 0.0): static
     {
         // TODO: If cluster -> if use small -> make vector small
         // Validate the operator to avoid SQL injection.
@@ -199,7 +292,7 @@ class VectorLiteQueryBuilder extends Builder
     /**
      * Add a where clause based on cosine similarity where the vector is between two values.
      */
-    public function whereVectorBetween(null|array|string $vector = null, float $min = 0.0, float $max = 1.0): Builder
+    public function whereVectorBetween(null|array|string $vector = null, float $min = 0.0, float $max = 1.0): static
     {
         // TODO: If cluster -> if use small -> make vector small
         $cosimMethodCall = $this->getCosimMethod($vector);
@@ -210,7 +303,7 @@ class VectorLiteQueryBuilder extends Builder
     /**
      * Add a having clause based on cosine similarity.
      */
-    public function havingVector(null|string|array $vector = null, string $operator = '>', float $threshold = 0.0): Builder
+    public function havingVector(null|string|array $vector = null, string $operator = '>', float $threshold = 0.0): static
     {
         // TODO: If cluster -> if use small -> make vector small
         // Validate the operator.
@@ -243,7 +336,7 @@ class VectorLiteQueryBuilder extends Builder
     /**
      * Order the query by cosine similarity.
      */
-    public function orderBySimilarity($vector, string $direction = 'desc'): Builder
+    public function orderBySimilarity($vector, string $direction = 'desc'): static
     {
         // TODO: If cluster -> if use small -> make vector small
         $direction = strtolower($direction) === 'asc' ? 'asc' : 'desc';
@@ -253,12 +346,70 @@ class VectorLiteQueryBuilder extends Builder
     }
 
     /**
+     * Order the query by cosine similarity to a model.
+     */
+    public function orderBySimilarityToModel(VectorModel $model, string $direction = 'desc'): static
+    {
+        return $this->orderBySimilarity($model->{$model->vectorColumn}, $direction);
+    }
+
+    /**
+     * Exclude given models from the query results.
+     */
+    public function withoutModels(null | iterable | VectorModel $models): static
+    {
+
+        $keys = $this->filterToKeys($models);
+
+        if (count($keys) > 0) {
+            $this->whereNotIn($this->qualifiedKeyName(), $keys);
+        }
+
+        return $this;
+    }
+
+    /**
+     * Force includes models in addition to the rest of the query,
+     * so that they are always part of the result
+     */
+    public function orIncludeModels(null | iterable | VectorModel $models): static
+    {
+        $keys = $this->filterToKeys($models);
+
+        if (count($keys) > 0) {
+            $this->orWhereIn($this->qualifiedKeyName(), $keys);
+        }
+
+        return $this;
+    }
+
+    /**
+     * Includes only the models in the arguments
+     */
+    public function includeModels(null | iterable | VectorModel $models): static
+    {
+        $keys = $this->filterToKeys($models);
+
+        if (count($keys) > 0) {
+            $this->whereIn($this->qualifiedKeyName(), $keys);
+        }
+
+        return $this;
+    }
+
+    /**
      * Exclude the current model from the query.
      */
-    public function excludeCurrent(?VectorModel $model = null): Builder
+    public function withoutSelf(): static
     {
-        $current = $model ?? $this->resolveModel();
+        return $this->withoutModels($this->resolveModel());
+    }
 
-        return $this->where($this->resolveModel()->getTable().'.id', '!=', $current->getKey());
+    /**
+     * Include the current model from the query.
+     */
+    public function includeSelf(): static
+    {
+        return $this->orWhere($this->qualifiedKeyName(), '=', $this->resolveModel()->getKey());
     }
 }

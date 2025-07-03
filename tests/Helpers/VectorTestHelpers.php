@@ -22,11 +22,12 @@ trait VectorTestHelpers
     private function createVectorRecord(int $dimensions = 1536, bool $isBatch = false): array
     {
         $vector = $this->createVectorArray($dimensions);
-        $binaryVector = VectorLite::normalizeToBinary($vector);
+        [$binaryVector, $norm] = VectorLite::normalizeToBinary($vector);
 
         return [
             'vector' => $isBatch ? $binaryVector : $vector,
             'vector_hash' => VectorLiteQueryBuilder::hashVectorBlob($binaryVector),
+            'vector_norm' => $norm,
             'created_at' => now(),
             'updated_at' => now(),
         ];
@@ -52,7 +53,6 @@ trait VectorTestHelpers
     private function fillVectorTable(int $amount = 1000, int $dimensions = 1536): void
     {
         $records = $this->createVectors($amount, $dimensions, true);
-
         foreach (array_chunk($records, 1000) as $chunk) {
             DB::table('vectors')->insert($chunk);
         }

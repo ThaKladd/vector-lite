@@ -87,7 +87,7 @@ class TestCase extends Orchestra
 
         Schema::create($clusterTableName, function (Blueprint $table) use ($tableName) {
             $table->id();
-            $table->vectorLite('vector');
+            $table->vectorLiteCluster('vector');
             $table->integer("{$tableName}_count")->default(0);
             $table->timestamps();
         });

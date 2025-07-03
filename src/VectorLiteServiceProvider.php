@@ -40,6 +40,7 @@ class VectorLiteServiceProvider extends PackageServiceProvider
                 if (! isset($cache[$queryId])) {
                     $cache[$queryId] = unpack('f*', $binaryQueryVector);
                 }
+
                 if (! isset($cache[$rowId])) {
                     $cache[$rowId] = unpack('f*', $binaryRowVector);
                 }
@@ -76,9 +77,23 @@ class VectorLiteServiceProvider extends PackageServiceProvider
             Blueprint::macro('vectorLite', function (string $column, $length = null, $fixed = false) {
                 /** @var Blueprint $this */
                 $this->binary($column, $length, $fixed)->nullable();
+                $this->float($column.'_norm')->nullable();
                 $this->string($column.'_hash')->nullable();
+            });
+
+            Blueprint::macro('vectorLiteCluster', function (string $column, $length = null, $fixed = false) {
+                /** @var Blueprint $this */
+                $this->vectorLite($column, $length, $fixed);
                 $this->binary($column.'_small', $length, $fixed)->nullable();
+                $this->float($column.'_small_norm')->nullable();
                 $this->string($column.'_small_hash')->nullable();
+            });
+
+            Blueprint::macro('dropVectorLite', function (string $column) {
+                /** @var Blueprint $this */
+                $this->dropColumn($column);
+                $this->dropColumn($column.'_norm');
+                $this->dropColumn($column.'_hash');
             });
         }
 

@@ -41,7 +41,7 @@ enum ReduceBy: string
     private function reduceByChunkedAggregation(array $vector, int $toDimensions): array
     {
         $vectorDimensions = count($vector);
-        $chunkSize = floor($vectorDimensions / $toDimensions);
+        $chunkSize = (int) floor($vectorDimensions / $toDimensions);
         $reducedVector = [];
 
         for ($i = 0; $i < $toDimensions; $i++) {

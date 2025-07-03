@@ -110,14 +110,18 @@ trait HasVector
         return $this->getTable().'_clusters';
     }
 
+    public function getModelName(): string
+    {
+        return get_class($this);
+    }
+
     public function getClusterModelName(): string
     {
         return Str::plural(get_class($this)).'Cluster';
     }
 
-    public function getModelName(): string
-    {
-        return get_class($this);
+    public function isCluster(): bool {
+        return str_ends_with($this->getModel()::class, 'Cluster');
     }
 
     public function getUniqueRowIdAttribute(): string
@@ -169,8 +173,9 @@ trait HasVector
     {
         // Pack array of floats into binary format
         // If not an array, assume it's already binary or handle error
-        $binaryVector = VectorLite::normalizeToBinary($vector);
+        [$binaryVector, $norm] = VectorLite::normalizeToBinary($vector);
         $this->attributes[self::$vectorColumn] = $binaryVector;
+        $this->attributes[self::$vectorColumn.'_norm'] = $norm;
         $this->attributes[self::$vectorColumn.'_hash'] = VectorLiteQueryBuilder::hashVectorBlob($binaryVector);
     }
 

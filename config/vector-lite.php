@@ -81,4 +81,14 @@ return [
     'use_cached_cosim' => true, // Cached cosim function on by default
     'cache_driver' => env('CACHE_DRIVER', false),
     'cache_time' => 60 * 60 * 24, // Cache time in seconds
+
+    /*
+     * --------------------------------------------------------------------------
+     * Other settings
+     * --------------------------------------------------------------------------
+     *
+     * exclude_self_by_default: If, when doing a vector query on an existing model,
+     * wether not exclude or include the current model by default.
+     */
+    'exclude_self_by_default' => false,
 ];

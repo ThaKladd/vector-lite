@@ -4,6 +4,7 @@ use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use ThaKladd\VectorLite\Tests\Helpers\VectorTestHelpers;
 use ThaKladd\VectorLite\Tests\Models\Vector;
+use ThaKladd\VectorLite\VectorLite;
 
 ini_set('memory_limit', '20000M');
 
@@ -43,12 +44,21 @@ it('can create vector table and use vector methods', function () {
 
     // dump($vectorModel->vector);
     // dump(unpack('f*', hex2bin($vectorModel->vector)));
+
+    /*
+        dump($vectorModel->vector);
+        $normalized = unpack('f*', $vectorModel->vector);
+        dump($normalized);
+        dump($vectorModel->vector_norm);
+        $denormalized = VectorLite::denormalize($normalized, $vectorModel->vector_norm);
+        dump($denormalized);
+*/
     $similarVector = Vector::findBestByVector($vectorModel->vector);
     // dump('$similarVector', $similarVector);
     $this->assertNotNull($similarVector);
     $this->assertEquals($vectorModel->id, $similarVector->id);
 
-    $similarVectorOther = Vector::bestByVector($vectorModel->vector, 1)->excludeCurrent($vectorModel)->first();
+    $similarVectorOther = Vector::bestByVector($vectorModel->vector, 1)->withoutModels($vectorModel)->first();
     // dump('$similarVectorOther', $similarVectorOther);
     $this->assertNotNull($similarVectorOther);
     $this->assertNotEquals($vectorModel->id, $similarVectorOther->id);
