@@ -81,6 +81,9 @@ class VectorLiteServiceProvider extends PackageServiceProvider
                 $this->string($column.'_hash')->nullable();
             });
 
+            /**
+             * @method Blueprint vectorLite(string $column, $length = null, $fixed = false)
+             */
             Blueprint::macro('vectorLiteCluster', function (string $column, $length = null, $fixed = false) {
                 /** @var Blueprint $this */
                 $this->vectorLite($column, $length, $fixed);

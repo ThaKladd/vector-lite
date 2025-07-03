@@ -100,7 +100,7 @@ class VectorLite
 
             /* @var class-string<\ThaKladd\VectorLite\Models\VectorModel> $clusterModelName */
             $bestCluster = $clusterModelName::selectRaw(
-                "{$this->clusterTable}.id, {$this->clusterTable}.{$this->countColumn}, COSIM_CACHE({$model->getVectorHashColumn(new $clusterModelName, $this->useSmallVector)}, {$vectorColumn}, ?, ?) as similarity",
+                "{$this->clusterTable}.id, {$this->clusterTable}.{$this->countColumn}, COSIM_CACHE({$model->getVectorHashColumn(new $clusterModelName)}, {$vectorColumn}, ?, ?) as similarity",
                 [$modelVectorHash, $modelVector]
             )->orderBy('similarity', 'desc')->first();
 
@@ -196,7 +196,7 @@ class VectorLite
             /** @var class-string<\ThaKladd\VectorLite\Models\VectorModel> $clusterClassName */
             $clusterClassName = $this->clusterClass;
             $bestCluster = $clusterClassName::selectRaw(
-                "{$this->clusterTable}.id, {$this->clusterTable}.{$this->countColumn}, COSIM_CACHE({$fullCluster->getVectorHashColumn(null, $this->useSmallVector)}, {$clusterVectorColumn}, ?, ?) as similarity",
+                "{$this->clusterTable}.id, {$this->clusterTable}.{$this->countColumn}, COSIM_CACHE({$fullCluster->getVectorHashColumn(null)}, {$clusterVectorColumn}, ?, ?) as similarity",
                 [$modelVectorHash, $modelVector]
             )->orderBy('similarity', 'desc')->first();
 
@@ -266,6 +266,7 @@ class VectorLite
         for ($i = 1; $i <= $n; $i++) {
             $normalizedVector[$i] *= $originalNorm;
         }
+
         return $normalizedVector;
     }
 
@@ -275,6 +276,7 @@ class VectorLite
     public static function normalizeToBinary(array $vector): array
     {
         [$normalVector, $norm] = self::normalize($vector);
+
         return [pack('f*', ...$normalVector), $norm];
     }
 }

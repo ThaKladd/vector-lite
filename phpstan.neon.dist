@@ -10,5 +10,7 @@ parameters:
     tmpDir: build/phpstan
     checkOctaneCompatibility: true
     checkModelProperties: true
+    stubFiles:
+        - %currentWorkingDirectory%/phpstan/BlueprintMacros.php
     ignoreErrors:
         - "#Called 'env' outside of the config directory which returns null when the config is cached, use 'config'#"

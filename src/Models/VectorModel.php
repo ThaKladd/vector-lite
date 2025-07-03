@@ -28,12 +28,7 @@ abstract class VectorModel extends Model implements HasVectorType
         $column = static::$vectorColumn;
         $this->fillable(array_merge(
             $this->getFillable(),
-            [$column, $column . '_norm', $column . '_hash']
+            [$column, $column.'_norm', $column.'_hash']
         ));
-    }
-
-    public function fillable(array $attributes): void
-    {
-        $this->fillable = $attributes;
     }
 }

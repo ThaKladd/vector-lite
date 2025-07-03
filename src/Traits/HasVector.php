@@ -120,7 +120,8 @@ trait HasVector
         return Str::plural(get_class($this)).'Cluster';
     }
 
-    public function isCluster(): bool {
+    public function isCluster(): bool
+    {
         return str_ends_with($this->getModel()::class, 'Cluster');
     }
 

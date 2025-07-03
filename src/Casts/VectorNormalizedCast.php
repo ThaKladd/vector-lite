@@ -17,7 +17,8 @@ class VectorNormalizedCast implements CastsAttributes
     {
         // Normalize and then implode
         [$vector, $norm] = VectorLite::normalize($value);
-        $model->setAttribute($key . '_norm', $norm);
+        $model->setAttribute($key.'_norm', $norm);
+
         return $vector;
     }
 }
