@@ -175,6 +175,7 @@ class VectorLiteQueryBuilder extends Builder
             $clusterModel = $resolvedModel->getClusterModel();
             $this->whereIn($clusterModel->getClusterForeignKey(), $ids);
         }
+
         return $this;
     }
 
