@@ -12,6 +12,8 @@ class VectorLiteQueryBuilder extends Builder
 {
     protected static ?bool $useClusterCache = null;
 
+    protected bool $similarityColumnSelected = false;
+
     protected int $clusterLimit = 1;
 
     /**
@@ -140,6 +142,39 @@ class VectorLiteQueryBuilder extends Builder
     }
 
     /**
+     * Validate the operator to avoid SQL injection.
+     */
+    protected function verifyOperator(string $operator): void
+    {
+        $allowed = ['=', '>', '<', '>=', '<=', '<>', '!='];
+        if (! in_array($operator, $allowed, true)) {
+            throw new \InvalidArgumentException("Invalid operator [$operator] provided.");
+        }
+    }
+
+    /**
+     * Validate the direction to avoid SQL injection or mistakes.
+     */
+    protected function verifyDirection(string $direction): void
+    {
+        if (! in_array($direction, ['ASC', 'DESC'], true)) {
+            throw new \InvalidArgumentException("Invalid direction [$direction] provided.");
+        }
+    }
+
+    /**
+     * Select vector with similarity alias
+     */
+    protected function selectWithSimilarity(array $resolvedVector): void
+    {
+        $model = $this->resolveModel();
+        $cosimMethodCall = $this->getCosimMethod($resolvedVector);
+        $binaryVector = $this->preparedBinaryVector($resolvedVector);
+        $this->selectRaw("{$model->getTable()}.*, {$cosimMethodCall} as {$model::$similarityAlias}", [$binaryVector]);
+        $this->similarityColumnSelected = true;
+    }
+
+    /**
      * Get the the Cosine Similarity method to use in the query
      * The method needs one argument for the binding,
      * that is the same vector that is passed here
@@ -196,12 +231,32 @@ class VectorLiteQueryBuilder extends Builder
      */
     public function selectSimilarity(array|string|VectorModel $vector, bool $excludeInputModel = true): static
     {
+        $resolvedVector = $this->resolveVector($vector, $excludeInputModel);
+        $this->selectWithSimilarity($resolvedVector);
+
+        return $this;
+    }
+
+    /**
+     * Scope the query to order by cosine similarity to the given vector,
+     * optionally limiting to the top N best matches.
+     */
+    public function bestByVector(array|string|VectorModel $vector, ?int $limit = null, bool $excludeInputModel = true): static
+    {
         $model = $this->resolveModel();
-        $vectorArray = $this->resolveVector($vector, $excludeInputModel);
-        $cosimMethodCall = $this->getCosimMethod($vector);
-        $smallVector = VectorLite::reduceVector($model, $vectorArray);
-        $binaryVector = VectorLite::vectorToBinary($smallVector);
-        $this->selectRaw("{$model->getTable()}.*, {$cosimMethodCall} as {$model::$similarityAlias}", [$binaryVector]);
+        $resolvedVector = $this->resolveVector($vector, $excludeInputModel);
+        $this->selectWithSimilarity($resolvedVector);
+
+        $this->similarityColumnSelected = true;
+        $this->orderBySimilarity();
+
+        if ($model->getKey()) {
+            $this->withoutModels($model);
+        }
+
+        if ($limit) {
+            $this->limit($limit);
+        }
 
         return $this;
     }
@@ -226,40 +281,11 @@ class VectorLiteQueryBuilder extends Builder
     }
 
     /**
-     * Scope the query to order by cosine similarity to the given vector,
-     * optionally limiting to the top N best matches.
-     */
-    public function bestByVector(array|string|VectorModel $vector, ?int $limit = null, bool $excludeInputModel = true): static
-    {
-        $model = $this->resolveModel();
-        $vector = $this->resolveVector($vector, $excludeInputModel);
-        $cosimMethodCall = $this->getCosimMethod($vector);
-        $binaryVector = $this->preparedBinaryVector($vector);
-
-        $this->selectRaw("{$model->getTable()}.*, {$cosimMethodCall} as {$model::$similarityAlias}", [$binaryVector])
-            ->orderByRaw("{$model::$similarityAlias} DESC");
-
-        if ($model->getKey()) {
-            $this->withoutModels($model);
-        }
-
-        if ($limit) {
-            $this->limit($limit);
-        }
-
-        return $this;
-    }
-
-    /**
      * Add a where clause based on cosine similarity.
      */
-    public function whereVector(array|string $vector, string $operator = '>', float $threshold = 0.0): static
+    public function whereVector(array|string|VectorModel $vector, string $operator = '>', float $threshold = 0.0): static
     {
-        // Validate the operator to avoid SQL injection.
-        $allowed = ['=', '>', '<', '>=', '<=', '<>', '!='];
-        if (! in_array($operator, $allowed, true)) {
-            throw new \InvalidArgumentException("Invalid operator [$operator] provided.");
-        }
+        $this->verifyOperator($operator);
         $cosimMethodCall = $this->getCosimMethod($vector);
         $binaryVector = $this->preparedBinaryVector($vector);
         $this->whereRaw("$cosimMethodCall $operator ?", [$binaryVector, $threshold]);
@@ -270,7 +296,7 @@ class VectorLiteQueryBuilder extends Builder
     /**
      * Add a where clause based on cosine similarity where the vector is between two values.
      */
-    public function whereVectorBetween(array|string $vector, float $min = 0.0, float $max = 1.0): static
+    public function whereVectorBetween(array|string|VectorModel $vector, float $min = 0.0, float $max = 1.0): static
     {
         $cosimMethodCall = $this->getCosimMethod($vector);
         $binaryVector = $this->preparedBinaryVector($vector);
@@ -279,32 +305,27 @@ class VectorLiteQueryBuilder extends Builder
         return $this;
     }
 
+    protected function shouldUseSimilarityAlias(array|string|null|VectorModel $vector): bool
+    {
+        return is_null($vector) || $this->similarityColumnSelected;
+    }
+
     /**
      * Add a having clause based on cosine similarity.
      */
-    public function havingVector(array|string|null $vector, string $operator = '>', float $threshold = 0.0): static
+    public function havingSimilarity(array|string|null|VectorModel $vector = null, string $operator = '>', float $threshold = 0.0): static
     {
-        // Validate the operator.
-        $allowed = ['=', '>', '<', '>=', '<=', '<>', '!='];
-        if (! in_array($operator, $allowed, true)) {
-            throw new \InvalidArgumentException("Invalid operator [$operator] provided.");
-        }
+        $this->verifyOperator($operator);
 
         $model = $this->resolveModel();
-        $vector = $vector ?? $model::$similarityAlias;
-
-        // Determine if the similarity column is already part of the query.
-        $hasSimilarityColumn = false;
-        if ($vector === $model::$similarityAlias || (! empty($this->columns) && in_array($model::$similarityAlias, $this->columns))) {
-            $hasSimilarityColumn = true;
-        }
-
-        if ($hasSimilarityColumn) {
+        if ($this->shouldUseSimilarityAlias($vector)) {
             // If the similarity column is already selected, use it in the HAVING clause.
             $this->having($model::$similarityAlias, $operator, $threshold);
 
             return $this;
         }
+
+        $vector = $this->resolveVector($vector);
 
         // Otherwise, compute the similarity on the fly.
         // (Note: Using HAVING RAW here because operators and bindings must be inline.)
@@ -318,22 +339,25 @@ class VectorLiteQueryBuilder extends Builder
     /**
      * Order the query by cosine similarity.
      */
-    public function orderBySimilarity(array|string $vector, string $direction = 'desc'): static
+    public function orderBySimilarity(array|string|null|VectorModel $vector = null, string $direction = 'DESC'): static
     {
-        $direction = strtolower($direction) === 'asc' ? 'asc' : 'desc';
+        $direction = strtoupper($direction);
+        $this->verifyDirection($direction);
+
+        $model = $this->resolveModel();
+        if ($this->shouldUseSimilarityAlias($vector)) {
+            // If the similarity column is already selected, use it in the ORDER BY clause.
+            $this->orderBy($model::$similarityAlias, $direction);
+
+            return $this;
+        }
+
+        $vector = $this->resolveVector($vector);
+        // Otherwise, compute the similarity on the fly.
+        // (Note: Using ORDER BY RAW here because operators and bindings must be inline.)
         $cosimMethodCall = $this->getCosimMethod($vector);
         $binaryVector = $this->preparedBinaryVector($vector);
         $this->orderByRaw("$cosimMethodCall $direction", [$binaryVector]);
-
-        return $this;
-    }
-
-    /**
-     * Order the query by cosine similarity to a model.
-     */
-    public function orderBySimilarityToModel(VectorModel $model, string $direction = 'desc'): static
-    {
-        $this->orderBySimilarity($this->qualifiedVectorColumnName($model), $direction);
 
         return $this;
     }

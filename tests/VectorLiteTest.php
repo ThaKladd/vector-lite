@@ -74,7 +74,7 @@ it('works with object calls', function () {
     $similar = $vectorModel->findBestVectorMatch();
     $this->assertNotEquals($vectorModel, $similar);
 
-    $similarModels = $vectorModel->bestVectorMatches();
+    $similarModels = $vectorModel->getBestVectorMatches();
     $this->assertTrue($similarModels->first()->similarity >= $similarModels->last()->similarity);
 
 });

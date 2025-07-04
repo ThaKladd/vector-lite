@@ -112,11 +112,6 @@ trait HasVector
         return $this->getTable().'_clusters';
     }
 
-    public function getModelName(): string
-    {
-        return get_class($this);
-    }
-
     /**
      * Gets the name of the cluster model for the given model
      *
@@ -140,6 +135,11 @@ trait HasVector
     public function isCluster(): bool
     {
         return str_ends_with($this->getModel()::class, 'Cluster');
+    }
+
+    public function getModelName(): string
+    {
+        return get_class($this);
     }
 
     public function getUniqueRowIdAttribute(): string
@@ -227,7 +227,7 @@ trait HasVector
     /**
      * Search for the best matches for the vector on the current object
      */
-    public function bestVectorMatches(?int $limit = null): Collection
+    public function getBestVectorMatches(?int $limit = null): Collection
     {
         return static::query()->withoutModels($this)->bestByVector($this, $limit)->get();
     }
