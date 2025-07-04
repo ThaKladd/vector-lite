@@ -3,7 +3,6 @@
 namespace ThaKladd\VectorLite\Tests\Helpers;
 
 use Illuminate\Support\Facades\DB;
-use ThaKladd\VectorLite\QueryBuilders\VectorLiteQueryBuilder;
 use ThaKladd\VectorLite\Tests\Models\Vector;
 use ThaKladd\VectorLite\VectorLite;
 
@@ -26,7 +25,7 @@ trait VectorTestHelpers
 
         return [
             'vector' => $isBatch ? $binaryVector : $vector,
-            'vector_hash' => VectorLiteQueryBuilder::hashVectorBlob($binaryVector),
+            'vector_hash' => VectorLite::hashVectorBlob($binaryVector),
             'vector_norm' => $norm,
             'created_at' => now(),
             'updated_at' => now(),

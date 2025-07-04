@@ -4,9 +4,11 @@ namespace ThaKladd\VectorLite\Traits;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasOne;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use ThaKladd\VectorLite\Enums\ReduceBy;
+use ThaKladd\VectorLite\Models\VectorModel;
 use ThaKladd\VectorLite\QueryBuilders\VectorLiteQueryBuilder;
 use ThaKladd\VectorLite\Services\EmbeddingService;
 use ThaKladd\VectorLite\Tests\Models\Vector;
@@ -115,9 +117,24 @@ trait HasVector
         return get_class($this);
     }
 
+    /**
+     * Gets the name of the cluster model for the given model
+     *
+     * @return class-string<VectorModel>
+     */
     public function getClusterModelName(): string
     {
         return Str::plural(get_class($this)).'Cluster';
+    }
+
+    /**
+     * Gets a new instance of the cluster model for the given model
+     */
+    public function getClusterModel(): VectorModel
+    {
+        $clusterClass = $this->getClusterModelName();
+
+        return new $clusterClass;
     }
 
     public function isCluster(): bool
@@ -177,9 +194,10 @@ trait HasVector
         [$binaryVector, $norm] = VectorLite::normalizeToBinary($vector);
         $this->attributes[self::$vectorColumn] = $binaryVector;
         $this->attributes[self::$vectorColumn.'_norm'] = $norm;
-        $this->attributes[self::$vectorColumn.'_hash'] = VectorLiteQueryBuilder::hashVectorBlob($binaryVector);
+        $this->attributes[self::$vectorColumn.'_hash'] = VectorLite::hashVectorBlob($binaryVector);
     }
 
+    // Relationship to the cluster
     public function cluster(): HasOne
     {
         $clusterModelName = $this->getClusterModelName();
@@ -188,6 +206,9 @@ trait HasVector
         return $this->hasOne($clusterModel::class);
     }
 
+    /**
+     * Creates an embedding, and, if turned on, a reduced embedding, for the text input
+     */
     public function createEmbedding(string $text, ?int $dimensions = null): array
     {
         $embeddingService = app(EmbeddingService::class);
@@ -201,5 +222,34 @@ trait HasVector
         }
 
         return [$embedding, $reducedEmbedding];
+    }
+
+    /**
+     * Search for the best matches for the vector on the current object
+     */
+    public function bestVectorMatches(?int $limit = null): Collection
+    {
+        return static::query()->withoutModels($this)->bestByVector($this, $limit)->get();
+    }
+
+    /**
+     * Find the best match for the vector on the current object
+     */
+    public function findBestVectorMatch(): Collection
+    {
+        return static::query()->withoutModels($this)->bestByVector($this, 1)->get();
+    }
+
+    /**
+     * Search for the best clusters based on current model
+     */
+    public function getBestClusters(int $amount = 1): Collection
+    {
+        /** @var class-string<VectorModel> $clusterClass */
+        $clusterClass = $this->getClusterModelName();
+        $small = VectorLite::smallClusterVectorColumn($this);
+        $attribute = self::$vectorColumn.$small;
+
+        return $clusterClass::searchBestByVector($this->$attribute, $amount);
     }
 }

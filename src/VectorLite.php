@@ -229,12 +229,10 @@ class VectorLite
      */
     public static function normalize(array $vector): array
     {
-        $n = count($vector);
         $sum = 0.0;
 
         // Compute the sum of squares.
-        for ($i = 0; $i < $n; $i++) {
-            $val = $vector[$i];
+        foreach ($vector as $i => $val) {
             $sum += $val * $val;
         }
 
@@ -250,7 +248,7 @@ class VectorLite
         $inv = 1.0 / $norm;
 
         // Normalize each element.
-        for ($i = 0; $i < $n; $i++) {
+        foreach ($vector as $i => $val) {
             $vector[$i] *= $inv;
         }
 
@@ -262,8 +260,7 @@ class VectorLite
      */
     public static function denormalize(array $normalizedVector, float $originalNorm): array
     {
-        $n = count($normalizedVector);
-        for ($i = 1; $i <= $n; $i++) {
+        foreach ($normalizedVector as $i => $val) {
             $normalizedVector[$i] *= $originalNorm;
         }
 
@@ -278,5 +275,96 @@ class VectorLite
         [$normalVector, $norm] = self::normalize($vector);
 
         return [pack('f*', ...$normalVector), $norm];
+    }
+
+    /**
+     * Binary vector to array
+     */
+    public static function binaryVectorToArray(string $vector): array
+    {
+        return array_values(unpack('f*', $vector));
+    }
+
+    /**
+     * Hashes the vector blob
+     */
+    public static function hashVectorBlob(array|string $vector): string
+    {
+        if (is_array($vector)) {
+            [$vector, $norm] = VectorLite::normalizeToBinary($vector);
+        }
+
+        return hash('xxh3', $vector);
+    }
+
+    /**
+     * Vector to array
+     */
+    public static function vectorToArray(array|string|VectorModel $vector): array
+    {
+        if (is_array($vector)) {
+            return $vector;
+        } elseif (is_string($vector)) {
+            return self::binaryVectorToArray($vector);
+        }
+
+        return self::vectorToArray($vector->{$vector::$vectorColumn});
+    }
+
+    /**
+     * Get the binary version of the vector
+     */
+    public static function vectorToBinary(array|string|VectorModel $vector): string
+    {
+        if (is_string($vector)) {
+            return $vector;
+        } elseif (is_object($vector)) {
+            return $vector->$vector::$vectorColumn.self::smallClusterVectorColumn($vector);
+        }
+
+        [$vector, $norm] = self::normalizeToBinary($vector);
+
+        return $vector;
+    }
+
+    /**
+     * If a different clustering dimension is used,
+     * the column column needs to be amended
+     */
+    public static function smallClusterVectorColumn(?VectorModel $model): string
+    {
+        $useSmall = config('vector-lite.use_clustering_dimensions', false);
+        $isCluster = $model->isCluster();
+
+        return $useSmall && $isCluster ? '_small' : '';
+    }
+
+    /**
+     * When clusters use a smaller sized vector, this method
+     * reduces the current vector down to the cluster size
+     */
+    public static function reduceVector(VectorModel $model, ?array $vector = null): array
+    {
+        $vectorToReduce = $vector ?? $model->{$model::$vectorColumn};
+        if (VectorLite::smallClusterVectorColumn($model)) {
+            if (is_null($vector) && $model->$model::$vectorColumnSmall) {
+                return $model->$model::$vectorColumnSmall;
+            }
+
+            $dimensions = config('vector-lite.clustering_dimensions');
+            $reduceByMethod = config('vector-lite.reduction_method');
+            if ($dimensions > count($vectorToReduce)) {
+                $reducedVector = $reduceByMethod->reduceVector($vector, $dimensions);
+                if (is_null($vector)) {
+                    $model->update([
+                        $model::$vectorColumnSmall => self::normalizeToBinary($reducedVector),
+                    ]);
+                }
+
+                return $reducedVector;
+            }
+        }
+
+        return self::vectorToArray($vectorToReduce);
     }
 }
