@@ -102,11 +102,17 @@ trait HasVector
         }
     }
 
+    /**
+     * Get the foreign key for the cluster table id of the vector on the model
+     */
     public function getClusterForeignKey(): string
     {
         return Str::singular($this->getClusterTableName()).'_id';
     }
 
+    /**
+     * Get the table name for the clustering of the vector on the model
+     */
     public function getClusterTableName(): string
     {
         return $this->getTable().'_clusters';
@@ -132,6 +138,9 @@ trait HasVector
         return new $clusterClass;
     }
 
+    /**
+     * Check if the model is a cluster
+     */
     public function isCluster(): bool
     {
         return str_ends_with($this->getModel()::class, 'Cluster');
@@ -195,6 +204,20 @@ trait HasVector
         $this->attributes[self::$vectorColumn] = $binaryVector;
         $this->attributes[self::$vectorColumn.'_norm'] = $norm;
         $this->attributes[self::$vectorColumn.'_hash'] = VectorLite::hashVectorBlob($binaryVector);
+
+        if(config('vector-lite.use_clustering_dimensions', false)){
+            // Reduce the vector if it is bigger than the smaller dimension size
+            $reduceByMethod = config('vector-lite.reduction_method');
+            $reduceDimensions = config('vector-lite.clustering_dimensions');
+            $reducedBinaryVector = $reducedNorm = $reducedVector = null;
+            if ($reduceDimensions < count($vector)) {
+                $reducedVector = $reduceByMethod->reduceVector($vector, $reduceDimensions);
+                [$reducedBinaryVector, $reducedNorm] = VectorLite::normalizeToBinary($reducedVector);
+                $this->attributes[self::$vectorColumn . '_small'] = $reducedBinaryVector;
+                $this->attributes[self::$vectorColumn . '_small_norm'] = $reducedNorm;
+                $this->attributes[self::$vectorColumn . '_small_hash'] = VectorLite::hashVectorBlob($reducedBinaryVector);
+            }
+        }
     }
 
     // Relationship to the cluster
@@ -247,7 +270,7 @@ trait HasVector
     {
         /** @var class-string<VectorModel> $clusterClass */
         $clusterClass = $this->getClusterModelName();
-        $small = VectorLite::smallClusterVectorColumn($this);
+        $small = VectorLite::smallVectorColumn($this);
         $attribute = self::$vectorColumn.$small;
 
         return $clusterClass::searchBestByVector($this->$attribute, $amount);

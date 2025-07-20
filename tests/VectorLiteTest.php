@@ -44,7 +44,7 @@ it('can create vector table and use vector methods', function () {
     $this->assertNotEmpty($vectorModel->vector);
 
     $similarVector = Vector::findBestByVector($vectorModel->vector);
-
+    dump($vectorModel->vector_hash, $vectorModel->vector);
     $this->assertNotNull($similarVector);
     $this->assertEquals($vectorModel->id, $similarVector->id);
 
@@ -59,7 +59,39 @@ it('can create vector table and use vector methods', function () {
 
     $this->assertNotNull($bestVectors);
     $this->assertCount(3, $bestVectors);
+    $this->assertTrue($bestVectors->first()->similarity > $bestVectors->last()->similarity);
+});
 
+it('can do clustering of vectors', function () {
+    $this->assertTrue(DB::getSchemaBuilder()->hasTable('vectors_clusters'));
+    $this->fillVectorClusterTable(100, 36);
+    $vectors = DB::table('vectors')->count();
+    $this->assertSame($vectors, 100);
+    $vectorClusters = DB::table('vectors_clusters')->count();
+    $vector = DB::table('vectors')->get()->first();
+    //dump($vector);
+    $all = DB::table('vectors_clusters')->get()->first();
+    //dump($all);
+    $this->assertSame($vectorClusters, 100);
+    $vectorModel = Vector::query()->inRandomOrder()->first();
+    $this->assertNotNull($vectorModel);
+    $this->assertNotEmpty($vectorModel->vector);
+
+    $similarVector = Vector::findBestByVector($vectorModel->vector);
+
+    $this->assertNotNull($similarVector);
+    $this->assertEquals($vectorModel->id, $similarVector->id);
+
+    $similarVectorOther = Vector::bestByVector($vectorModel->vector, 1)->withoutModels($vectorModel)->first();
+
+    $this->assertNotNull($similarVectorOther);
+    $this->assertNotEquals($vectorModel->id, $similarVectorOther->id);
+    $vectorArray = $this->createVectorArray(36);
+    $bestVectors = Vector::searchBestByVector($vectorArray, 3);
+
+    $this->assertNotNull($bestVectors);
+    $this->assertCount(3, $bestVectors);
+    $this->assertTrue($bestVectors->first()->similarity > $bestVectors->last()->similarity);
 });
 
 /**

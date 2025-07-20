@@ -94,9 +94,9 @@ class VectorLite
 
             $smallVector = ($this->useSmallVector ? '_small' : '');
             $vectorColumn = $this->clusterTable.'.vector'.$smallVector;
-            $modelVectorColumn = ($model::$vectorColumn).$smallVector;
-            $modelVectorHash = $model->{$modelVectorColumn.'_hash'};
+            $modelVectorColumn = $model::$vectorColumn . $smallVector;
             $modelVector = $model->$modelVectorColumn;
+            $modelVectorHash = $model->{$modelVectorColumn.'_hash'};
 
             /* @var class-string<\ThaKladd\VectorLite\Models\VectorModel> $clusterModelName */
             $bestCluster = $clusterModelName::selectRaw(
@@ -134,19 +134,23 @@ class VectorLite
     protected function createNewCluster(VectorModel $model): object
     {
         $clusterModelName = $this->clusterModelName;
-        $smallVector = ($this->useSmallVector ? '_small' : '');
-        $modelVectorColumn = ($model::$vectorColumn).$smallVector;
-        $modelVectorHash = $model->{$modelVectorColumn.'_hash'};
+        $modelVector = $model->{$model::$vectorColumn};
+        $modelVectorHash = $model->{$model::$vectorColumn . '_hash'};
+        $modelVectorNorm = $model->{$model::$vectorColumn . '_norm'};
 
         /* @var class-string<VectorModel> $clusterModelName */
         $clusterModel = new $clusterModelName;
         $clusterModel->setRawAttributes([
-            'vector'.$smallVector => $model->$modelVectorColumn,
-            'vector'.$smallVector.'_hash' => $model->$modelVectorHash,
+            'vector' => $modelVector,
+            'vector_hash' => $modelVectorHash,
+            'vector_norm' => $modelVectorNorm,
             $this->countColumn => 1,
         ]);
 
         $clusterModel->save();
+        if($this->useSmallVector) {
+            $this->reduceVector($clusterModel);
+        }
 
         return $clusterModel;
     }
@@ -268,6 +272,14 @@ class VectorLite
     }
 
     /**
+     * Denormalize a vector using the original norm from the binary.
+     */
+    public static function denormalizeFromBinary(string $binaryVector, float $originalNorm): array
+    {
+      return self::denormalize(self::binaryVectorToArray($binaryVector), $originalNorm);
+    }
+
+    /**
      * Normalize a vector to binary.
      */
     public static function normalizeToBinary(array $vector): array
@@ -319,7 +331,7 @@ class VectorLite
         if (is_string($vector)) {
             return $vector;
         } elseif (is_object($vector)) {
-            return $vector->$vector::$vectorColumn.self::smallClusterVectorColumn($vector);
+            return $vector->$vector::$vectorColumn.self::smallVectorColumn($vector);
         }
 
         [$vector, $norm] = self::normalizeToBinary($vector);
@@ -331,36 +343,41 @@ class VectorLite
      * If a different clustering dimension is used,
      * the column column needs to be amended
      */
-    public static function smallClusterVectorColumn(?VectorModel $model): string
+    public static function smallVectorColumn(?VectorModel $model): string
     {
-        $useSmall = config('vector-lite.use_clustering_dimensions', false);
-        $isCluster = $model->isCluster();
-
-        return $useSmall && $isCluster ? '_small' : '';
+        return config('vector-lite.use_clustering_dimensions', false) ? '_small' : '';
     }
 
     /**
-     * When clusters use a smaller sized vector, this method
-     * reduces the current vector down to the cluster size
+     * When clusters use a smaller sized vector, this method reduces
+     * the current vector down to the clusters smaller vector size
      */
     public static function reduceVector(VectorModel $model, ?array $vector = null): array
     {
-        $vectorToReduce = $vector ?? $model->{$model::$vectorColumn};
-        if (VectorLite::smallClusterVectorColumn($model)) {
-            if (is_null($vector) && $model->$model::$vectorColumnSmall) {
-                return $model->$model::$vectorColumnSmall;
+        $vectorColumn = $model::$vectorColumn;
+        $vectorColumnSmall = $model::$vectorColumnSmall;
+
+        $vectorToReduce = $vector ?? self::denormalizeFromBinary($model->$vectorColumn, $model->{$vectorColumn.'_norm'});
+        if (config('vector-lite.use_clustering_dimensions', false)) {
+            // If small vector exists, return it
+            if (is_null($vector) && $model->$vectorColumnSmall) {
+                return self::denormalizeFromBinary($model->$vectorColumnSmall, $model->{$vectorColumnSmall.'_norm'});
             }
 
             $dimensions = config('vector-lite.clustering_dimensions');
             $reduceByMethod = config('vector-lite.reduction_method');
-            if ($dimensions > count($vectorToReduce)) {
-                $reducedVector = $reduceByMethod->reduceVector($vector, $dimensions);
+
+            // Reduce the vector if it is bigger than the smaller dimension size
+            if ($dimensions < count($vectorToReduce)) {
+                $reducedVector = $reduceByMethod->reduceVector($vectorToReduce, $dimensions);
                 if (is_null($vector)) {
+                    [$smallBinaryVector, $norm] = self::normalizeToBinary($reducedVector);
                     $model->update([
-                        $model::$vectorColumnSmall => self::normalizeToBinary($reducedVector),
+                        $vectorColumnSmall => $smallBinaryVector,
+                        $vectorColumnSmall . '_hash' => self::hashVectorBlob($smallBinaryVector),
+                        $vectorColumnSmall . '_norm' => $norm,
                     ]);
                 }
-
                 return $reducedVector;
             }
         }

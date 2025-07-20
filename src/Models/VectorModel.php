@@ -26,9 +26,15 @@ abstract class VectorModel extends Model implements HasVectorType
     protected function mergeFillableFromVectorColumn(): void
     {
         $column = static::$vectorColumn;
+        $vectorColumns = [$column, $column.'_norm', $column.'_hash'];
+
+        $columnSmall = config('vector-lite.use_clustering_dimensions', false) ? $column . '_small' : '';
+        $vectorSmallColumns = $columnSmall ? [$columnSmall, $columnSmall . '_norm', $columnSmall . '_hash'] : [];
+
         $this->fillable(array_merge(
             $this->getFillable(),
-            [$column, $column.'_norm', $column.'_hash']
+            $vectorColumns,
+            $vectorSmallColumns,
         ));
     }
 }

@@ -79,17 +79,11 @@ class VectorLiteServiceProvider extends PackageServiceProvider
                 $this->binary($column, $length, $fixed)->nullable();
                 $this->float($column.'_norm')->nullable();
                 $this->string($column.'_hash')->nullable();
-            });
-
-            /**
-             * @method Blueprint vectorLite(string $column, $length = null, $fixed = false)
-             */
-            Blueprint::macro('vectorLiteCluster', function (string $column, $length = null, $fixed = false) {
-                /** @var Blueprint $this */
-                $this->vectorLite($column, $length, $fixed);
-                $this->binary($column.'_small', $length, $fixed)->nullable();
-                $this->float($column.'_small_norm')->nullable();
-                $this->string($column.'_small_hash')->nullable();
+                if(config('vector-lite.use_clustering_dimensions', false)) {
+                    $this->binary($column.'_small', $length, $fixed)->nullable();
+                    $this->float($column.'_small_norm')->nullable();
+                    $this->string($column.'_small_hash')->nullable();
+                }
             });
 
             Blueprint::macro('dropVectorLite', function (string $column) {
@@ -97,6 +91,12 @@ class VectorLiteServiceProvider extends PackageServiceProvider
                 $this->dropColumn($column);
                 $this->dropColumn($column.'_norm');
                 $this->dropColumn($column.'_hash');
+
+                if(config('vector-lite.use_clustering_dimensions', false)) {
+                    $this->dropColumn($column.'_small');
+                    $this->dropColumn($column.'_small_norm');
+                    $this->dropColumn($column.'_small_hash');
+                }
             });
         }
 

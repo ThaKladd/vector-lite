@@ -8,6 +8,7 @@ use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
+use Illuminate\Support\Facades\DB;
 use Orchestra\Testbench\TestCase as Orchestra;
 use ThaKladd\VectorLite\VectorLiteServiceProvider;
 
@@ -60,6 +61,11 @@ class TestCase extends Orchestra
         $app['config']->set('database.migrations', []);
         $app['config']->set('database.connections.sqlite.database', ':memory:');
 
+        //Vector lite settings
+        $app['config']->set('vector-lite.default_dimensions', 36);
+        $app['config']->set('vector-lite.clustering_dimensions', 6);
+        $app['config']->set('vector-lite.clusters_size', 10);
+
         // If you have a .env in the package root, load it here:
         if (file_exists(__DIR__.'/../.env')) {
             Dotenv::createImmutable(__DIR__.'/../')->load();
@@ -87,12 +93,13 @@ class TestCase extends Orchestra
 
         Schema::create($clusterTableName, function (Blueprint $table) use ($tableName) {
             $table->id();
-            $table->vectorLiteCluster('vector');
+            $table->vectorLite('vector');
             $table->integer("{$tableName}_count")->default(0);
             $table->timestamps();
         });
-
-        Schema::table($clusterTableName, function (Blueprint $table) use ($clusterTableName, $foreignColumn) {
+        // $columns = DB::getSchemaBuilder()->getColumnListing($clusterTableName);
+        // dump($columns);
+        Schema::table($tableName, function (Blueprint $table) use ($clusterTableName, $foreignColumn) {
             $table->foreignId($foreignColumn.'_id')
                 ->nullable()
                 ->constrained($clusterTableName)

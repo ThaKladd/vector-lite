@@ -5,7 +5,7 @@ namespace DummyNamespace;
 use ThaKladd\VectorLite\Traits\HasVector;
 use Illuminate\Database\Eloquent\Model;
 
-class DummyClass extends Model
+class DummyClass extends VectorModel
 {
     use HasVector;
 }

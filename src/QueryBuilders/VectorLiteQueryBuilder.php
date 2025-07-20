@@ -72,8 +72,9 @@ class VectorLiteQueryBuilder extends Builder
      */
     protected function preparedBinaryVector(string|array $vector): string
     {
+        $resolvedModel = $this->resolveModel();
         $vectorArray = VectorLite::vectorToArray($vector);
-        $smallVectorArray = VectorLite::reduceVector($this->resolveModel(), $vectorArray);
+        $smallVectorArray = $resolvedModel->isCluster() ? VectorLite::reduceVector($this->resolveModel(), $vectorArray) : $vectorArray;
 
         return VectorLite::vectorToBinary($smallVectorArray);
     }
@@ -94,7 +95,7 @@ class VectorLiteQueryBuilder extends Builder
     protected function qualifiedVectorColumnName(?VectorModel $model = null): string
     {
         $resolvedModel = $this->resolveModel($model);
-        $smallVectorColumn = $resolvedModel->isCluster() ? VectorLite::smallClusterVectorColumn($resolvedModel) : '';
+        $smallVectorColumn = $resolvedModel->isCluster() ? VectorLite::smallVectorColumn($resolvedModel) : '';
 
         return $resolvedModel->getTable().'.'.$resolvedModel::$vectorColumn.$smallVectorColumn;
     }
@@ -132,7 +133,7 @@ class VectorLiteQueryBuilder extends Builder
     public function getVectorHashColumn(?VectorModel $model = null): string
     {
         $resolvedModel = $this->resolveModel($model);
-        $smallVectorColumn = $resolvedModel->isCluster() ? VectorLite::smallClusterVectorColumn($resolvedModel) : '';
+        $smallVectorColumn = $resolvedModel->isCluster() ? VectorLite::smallVectorColumn($resolvedModel) : '';
         $vectorHashColumn = $resolvedModel::$vectorColumn.$smallVectorColumn.'_hash';
         if (Schema::hasColumn($resolvedModel->getTable(), $vectorHashColumn)) {
             return $vectorHashColumn;
@@ -183,6 +184,7 @@ class VectorLiteQueryBuilder extends Builder
     {
         $vectorColumn = $this->qualifiedVectorColumnName();
         if ($this->useCachedCosim()) {
+
             $hashColumn = $this->getVectorHashColumn();
             $binaryVector = $this->preparedBinaryVector($vector);
             $hashedSmallVector = VectorLite::hashVectorBlob($binaryVector);
