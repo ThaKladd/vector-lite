@@ -21,7 +21,6 @@ class VectorLiteServiceProvider extends PackageServiceProvider
                 // Cache the unpacked query vector in a static variable - so it does not need to be unpacked for each row
                 static $cache = [];
                 static $dot = [];
-                static $amount = 0;
                 static $driver = null;
                 static $cacheTime = false;
 
@@ -45,15 +44,13 @@ class VectorLiteServiceProvider extends PackageServiceProvider
                     $cache[$rowId] = unpack('f*', $binaryRowVector);
                 }
 
-                if ($amount === 0) {
-                    $amount = count($cache[$queryId]);
-                }
+                $amount = count($cache[$queryId]);
 
                 $dotProduct = 0.0;
                 for ($i = 1; $i <= $amount; $i++) {
                     $dotProduct += $cache[$queryId][$i] * $cache[$rowId][$i];
                 }
-                $dotProduct = $dot[$rowId][$queryId] = $dotProduct;
+                $dot[$rowId][$queryId] = $dotProduct;
 
                 if (isset($driver) && $driver) {
                     Cache::store($driver)->put('vector-lite-cache', $dot, $cacheTime);
@@ -79,7 +76,7 @@ class VectorLiteServiceProvider extends PackageServiceProvider
                 $this->binary($column, $length, $fixed)->nullable();
                 $this->float($column.'_norm')->nullable();
                 $this->string($column.'_hash')->nullable();
-                if(config('vector-lite.use_clustering_dimensions', false)) {
+                if (config('vector-lite.use_clustering_dimensions', false)) {
                     $this->binary($column.'_small', $length, $fixed)->nullable();
                     $this->float($column.'_small_norm')->nullable();
                     $this->string($column.'_small_hash')->nullable();
@@ -92,7 +89,7 @@ class VectorLiteServiceProvider extends PackageServiceProvider
                 $this->dropColumn($column.'_norm');
                 $this->dropColumn($column.'_hash');
 
-                if(config('vector-lite.use_clustering_dimensions', false)) {
+                if (config('vector-lite.use_clustering_dimensions', false)) {
                     $this->dropColumn($column.'_small');
                     $this->dropColumn($column.'_small_norm');
                     $this->dropColumn($column.'_small_hash');

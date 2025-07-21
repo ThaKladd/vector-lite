@@ -3,23 +3,30 @@
 namespace ThaKladd\VectorLite\QueryBuilders;
 
 use Illuminate\Database\Eloquent\Builder;
-use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\Schema;
+use ThaKladd\VectorLite\Collections\VectorModelCollection;
 use ThaKladd\VectorLite\Models\VectorModel;
 use ThaKladd\VectorLite\VectorLite;
 
+/**
+ * @template TModel of \Illuminate\Database\Eloquent\Model
+ *
+ * @extends \Illuminate\Database\Eloquent\Builder<TModel>
+ */
 class VectorLiteQueryBuilder extends Builder
 {
     protected static ?bool $useClusterCache = null;
 
     protected bool $similarityColumnSelected = false;
 
+    protected bool $deferClusterFilter = false;
+
     protected int $clusterLimit = 1;
 
     /**
      * Set the cluster amount limit to work with
      */
-    public function clusterAmount(int $limit): static
+    private function clusterAmount(int $limit): static
     {
         $this->clusterLimit = $limit;
 
@@ -115,7 +122,7 @@ class VectorLiteQueryBuilder extends Builder
      */
     protected function filterToKeys(null|iterable|VectorModel $models): array
     {
-        $models = Collection::wrap($models);
+        $models = VectorModelCollection::wrap($models);
 
         return $models->map(function ($model) {
             if (! $model instanceof VectorModel) {
@@ -201,7 +208,18 @@ class VectorLiteQueryBuilder extends Builder
      * More clusters equals wider result,
      * possibly better, but slower.
      */
-    public function filterByClosestClusters(array|string|VectorModel $vector, bool $excludeInputModel = true): static
+    public function filterByClosestClusters(int $amount = 1): static
+    {
+        $this->deferClusterFilter = true;
+        $this->clusterAmount($amount);
+
+        return $this;
+    }
+
+    /**
+     * The actual work of the filterByClosestClusters() that is deferred
+     */
+    private function searchClusters(null|array|string|VectorModel $vector = null)
     {
         $resolvedModel = $this->resolveModel();
         $clusterModelName = $resolvedModel->getClusterModelName();
@@ -223,9 +241,22 @@ class VectorLiteQueryBuilder extends Builder
      * 1. Get best cluster for the vector
      * 2. Get the best cluster for the vector on the model -> but the not static
      */
-    public function getBestClustersByVector(array|string|VectorModel $vector, int $amount = 1, bool $excludeInputModel = true): Collection
+    public function getBestClustersByVector(array|string|VectorModel $vector, int $amount = 1, bool $excludeInputModel = true): VectorModelCollection
     {
         return $this->resolveModel()->getClusterModelName()::searchBestByVector($vector, $amount, $excludeInputModel);
+    }
+
+    /**
+     * Find the  best clusters based on a vector.
+     */
+    public function findBestClustersByVector(array|string|VectorModel $vector): ?VectorModel
+    {
+        /** @var VectorModel|null $model */
+        $model = $this->resolveModel()
+            ->getClusterModelName()::searchBestByVector($vector, 1, false)
+            ->first();
+
+        return $model;
     }
 
     /**
@@ -245,11 +276,14 @@ class VectorLiteQueryBuilder extends Builder
      */
     public function bestByVector(array|string|VectorModel $vector, ?int $limit = null, bool $excludeInputModel = true): static
     {
+        if ($this->deferClusterFilter) {
+            $this->searchClusters($vector);
+        }
+
         $model = $this->resolveModel();
         $resolvedVector = $this->resolveVector($vector, $excludeInputModel);
-        $this->selectWithSimilarity($resolvedVector);
 
-        $this->similarityColumnSelected = true;
+        $this->selectWithSimilarity($resolvedVector);
         $this->orderBySimilarity();
 
         if ($model->getKey()) {
@@ -276,8 +310,10 @@ class VectorLiteQueryBuilder extends Builder
 
     /**
      * Search for the best matches based on cosine similarity.
+     *
+     * @return VectorModelCollection<VectorModel>
      */
-    public function searchBestByVector(array|string|VectorModel $vector, ?int $limit = null, bool $excludeInputModel = true): Collection
+    public function searchBestByVector(array|string|VectorModel $vector, ?int $limit = null, bool $excludeInputModel = true): VectorModelCollection
     {
         return $this->bestByVector($vector, $limit, $excludeInputModel)->get();
     }

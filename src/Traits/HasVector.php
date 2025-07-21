@@ -205,7 +205,7 @@ trait HasVector
         $this->attributes[self::$vectorColumn.'_norm'] = $norm;
         $this->attributes[self::$vectorColumn.'_hash'] = VectorLite::hashVectorBlob($binaryVector);
 
-        if(config('vector-lite.use_clustering_dimensions', false)){
+        if (config('vector-lite.use_clustering_dimensions', false)) {
             // Reduce the vector if it is bigger than the smaller dimension size
             $reduceByMethod = config('vector-lite.reduction_method');
             $reduceDimensions = config('vector-lite.clustering_dimensions');
@@ -213,9 +213,9 @@ trait HasVector
             if ($reduceDimensions < count($vector)) {
                 $reducedVector = $reduceByMethod->reduceVector($vector, $reduceDimensions);
                 [$reducedBinaryVector, $reducedNorm] = VectorLite::normalizeToBinary($reducedVector);
-                $this->attributes[self::$vectorColumn . '_small'] = $reducedBinaryVector;
-                $this->attributes[self::$vectorColumn . '_small_norm'] = $reducedNorm;
-                $this->attributes[self::$vectorColumn . '_small_hash'] = VectorLite::hashVectorBlob($reducedBinaryVector);
+                $this->attributes[self::$vectorColumn.'_small'] = $reducedBinaryVector;
+                $this->attributes[self::$vectorColumn.'_small_norm'] = $reducedNorm;
+                $this->attributes[self::$vectorColumn.'_small_hash'] = VectorLite::hashVectorBlob($reducedBinaryVector);
             }
         }
     }

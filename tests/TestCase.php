@@ -6,9 +6,9 @@ use Dotenv\Dotenv;
 use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
-use Illuminate\Support\Facades\DB;
 use Orchestra\Testbench\TestCase as Orchestra;
 use ThaKladd\VectorLite\VectorLiteServiceProvider;
 
@@ -61,7 +61,7 @@ class TestCase extends Orchestra
         $app['config']->set('database.migrations', []);
         $app['config']->set('database.connections.sqlite.database', ':memory:');
 
-        //Vector lite settings
+        // Vector lite settings
         $app['config']->set('vector-lite.default_dimensions', 36);
         $app['config']->set('vector-lite.clustering_dimensions', 6);
         $app['config']->set('vector-lite.clusters_size', 10);

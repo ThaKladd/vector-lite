@@ -94,7 +94,7 @@ class VectorLite
 
             $smallVector = ($this->useSmallVector ? '_small' : '');
             $vectorColumn = $this->clusterTable.'.vector'.$smallVector;
-            $modelVectorColumn = $model::$vectorColumn . $smallVector;
+            $modelVectorColumn = $model::$vectorColumn.$smallVector;
             $modelVector = $model->$modelVectorColumn;
             $modelVectorHash = $model->{$modelVectorColumn.'_hash'};
 
@@ -135,8 +135,8 @@ class VectorLite
     {
         $clusterModelName = $this->clusterModelName;
         $modelVector = $model->{$model::$vectorColumn};
-        $modelVectorHash = $model->{$model::$vectorColumn . '_hash'};
-        $modelVectorNorm = $model->{$model::$vectorColumn . '_norm'};
+        $modelVectorHash = $model->{$model::$vectorColumn.'_hash'};
+        $modelVectorNorm = $model->{$model::$vectorColumn.'_norm'};
 
         /* @var class-string<VectorModel> $clusterModelName */
         $clusterModel = new $clusterModelName;
@@ -148,7 +148,7 @@ class VectorLite
         ]);
 
         $clusterModel->save();
-        if($this->useSmallVector) {
+        if ($this->useSmallVector) {
             $this->reduceVector($clusterModel);
         }
 
@@ -175,13 +175,12 @@ class VectorLite
         /** @var class-string<\ThaKladd\VectorLite\Models\VectorModel> $modelClassName */
         $clusterVectors = $modelClassName::query()
             ->where($this->clusterForeignKey, $fullCluster->id)
-            ->where($this->matchColumn, '<', 1.0)
             ->orderBy($this->matchColumn)
             ->get();
 
-        // Get the model that is the least similar in the cluster, and make a new cluster and assign it to model
+        // Get the model that is the least similar in the cluster, make a new cluster, and assign it to model
         /** @var \ThaKladd\VectorLite\Models\VectorModel $leastSimilarModel */
-        $leastSimilarModel = $clusterVectors->shift(); // Remove the first out from the collection
+        $leastSimilarModel = $clusterVectors->shift();
         $newCluster = $this->createNewCluster($leastSimilarModel);
         $this->cacheClusterOperation($fullCluster, -1);
         $this->updateModelWithCluster($leastSimilarModel, $newCluster, 1.0);
@@ -276,7 +275,7 @@ class VectorLite
      */
     public static function denormalizeFromBinary(string $binaryVector, float $originalNorm): array
     {
-      return self::denormalize(self::binaryVectorToArray($binaryVector), $originalNorm);
+        return self::denormalize(self::binaryVectorToArray($binaryVector), $originalNorm);
     }
 
     /**
@@ -374,10 +373,11 @@ class VectorLite
                     [$smallBinaryVector, $norm] = self::normalizeToBinary($reducedVector);
                     $model->update([
                         $vectorColumnSmall => $smallBinaryVector,
-                        $vectorColumnSmall . '_hash' => self::hashVectorBlob($smallBinaryVector),
-                        $vectorColumnSmall . '_norm' => $norm,
+                        $vectorColumnSmall.'_hash' => self::hashVectorBlob($smallBinaryVector),
+                        $vectorColumnSmall.'_norm' => $norm,
                     ]);
                 }
+
                 return $reducedVector;
             }
         }

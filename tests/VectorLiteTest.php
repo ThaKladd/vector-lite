@@ -17,6 +17,8 @@ it('can connect to database', function () {
 });
 
 it('can create vector table and use vector methods', function () {
+    $vectorAmount = 100;
+
     // Create the table
     // Artisan::call('vector-lite:make', ['model' => 'Vector']);
 
@@ -29,14 +31,14 @@ it('can create vector table and use vector methods', function () {
     // $columns = DB::getSchemaBuilder()->getColumnListing('vectors_clusters');
 
     // Fill the table with random vectors
-    $this->fillVectorTable(100, 36);
+    $this->fillVectorTable($vectorAmount, 36);
 
     // $this->fillVectorClusterTable(100, 36);
 
     // Check if the vectors are inserted
     $vectors = DB::table('vectors')->count();
 
-    $this->assertSame($vectors, 100);
+    $this->assertSame($vectors, $vectorAmount);
 
     $vectorModel = Vector::query()->inRandomOrder()->first();
     // dump('$vectorModel', $vectorModel);
@@ -44,7 +46,6 @@ it('can create vector table and use vector methods', function () {
     $this->assertNotEmpty($vectorModel->vector);
 
     $similarVector = Vector::findBestByVector($vectorModel->vector);
-    dump($vectorModel->vector_hash, $vectorModel->vector);
     $this->assertNotNull($similarVector);
     $this->assertEquals($vectorModel->id, $similarVector->id);
 
@@ -63,22 +64,26 @@ it('can create vector table and use vector methods', function () {
 });
 
 it('can do clustering of vectors', function () {
+    $vectorAmount = 5000; // 5000 should make the clustering have an effect on speed
+    $clusterSize = config('vector-lite.clusters_size');
+    $clusteringThreshold = $vectorAmount / $clusterSize * 3;
+
     $this->assertTrue(DB::getSchemaBuilder()->hasTable('vectors_clusters'));
-    $this->fillVectorClusterTable(100, 36);
+    $this->fillVectorClusterTable($vectorAmount, 36);
     $vectors = DB::table('vectors')->count();
-    $this->assertSame($vectors, 100);
+    $this->assertSame($vectors, $vectorAmount);
     $vectorClusters = DB::table('vectors_clusters')->count();
-    $vector = DB::table('vectors')->get()->first();
-    //dump($vector);
-    $all = DB::table('vectors_clusters')->get()->first();
-    //dump($all);
-    $this->assertSame($vectorClusters, 100);
+
+    $this->assertTrue($vectorClusters <= $clusteringThreshold);
     $vectorModel = Vector::query()->inRandomOrder()->first();
     $this->assertNotNull($vectorModel);
     $this->assertNotEmpty($vectorModel->vector);
 
-    $similarVector = Vector::findBestByVector($vectorModel->vector);
+    $bestCluster = Vector::findBestClustersByVector($vectorModel->vector);
+    $this->assertNotNull($bestCluster);
+    $this->assertTrue($bestCluster->id === $vectorModel->vectors_cluster_id || $bestCluster->similarity > 0.9);
 
+    $similarVector = Vector::findBestByVector($vectorModel->vector);
     $this->assertNotNull($similarVector);
     $this->assertEquals($vectorModel->id, $similarVector->id);
 
@@ -92,6 +97,16 @@ it('can do clustering of vectors', function () {
     $this->assertNotNull($bestVectors);
     $this->assertCount(3, $bestVectors);
     $this->assertTrue($bestVectors->first()->similarity > $bestVectors->last()->similarity);
+
+    $startTime = microtime(true);
+    $bestVectors = Vector::searchBestByVector($vectorModel->vector, 10);
+    $normalSearchTime = round(microtime(true) - $startTime, 6);
+
+    $startTime = microtime(true);
+    $bestVectors = Vector::filterByClosestClusters()->searchBestByVector($vectorModel->vector, 10);
+    $limitedSearchTime = round(microtime(true) - $startTime, 6);
+    $this->assertTrue($normalSearchTime > $limitedSearchTime);
+
 });
 
 /**
