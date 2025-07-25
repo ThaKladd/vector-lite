@@ -3,7 +3,6 @@
 namespace ThaKladd\VectorLite;
 
 use Illuminate\Database\Schema\Blueprint;
-use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Spatie\LaravelPackageTools\Package;
 use Spatie\LaravelPackageTools\PackageServiceProvider;
@@ -17,69 +16,19 @@ class VectorLiteServiceProvider extends PackageServiceProvider
         // Implementing the idea from here: https://www.splitbrain.org/blog/2023-08/15-using_sqlite_as_vector_store_in_php
         if (DB::connection()->getDriverName() === 'sqlite') {
 
-            DB::connection()->getPdo()->sqliteCreateFunction('COSIM_CACHE', function ($rowId, $binaryRowVector, $queryId, $binaryQueryVector) {
-                // Cache the unpacked query vector in a static variable - so it does not need to be unpacked for each row
-                static $cache = [];
-                static $dot = [];
-                static $driver = null;
-                static $cacheTime = false;
+            DB::connection()->getPdo()->sqliteCreateFunction('COSIM_CACHE', [VectorLite::class, 'cosineSimilarityBinaryCache']);
 
-                // If cache is empty, and driver is set, then load the cache from the driver
-                if (! $dot && $driver = config('vector-lite.cache_driver')) {
-                    $cacheTime = $cacheTime ?: config('vector-lite.cache_time');
-                    $dot = Cache::get($driver)->get('vector-lite-cache', []);
-                }
-
-                // Check if the dot product is already cached
-                if (isset($dot[$rowId][$queryId])) {
-                    return $dot[$rowId][$queryId];
-                }
-
-                // Cache the unpacked vectors for the current session
-                if (! isset($cache[$queryId])) {
-                    $cache[$queryId] = unpack('f*', $binaryQueryVector);
-                }
-
-                if (! isset($cache[$rowId])) {
-                    $cache[$rowId] = unpack('f*', $binaryRowVector);
-                }
-
-                $amount = count($cache[$queryId]);
-
-                $dotProduct = 0.0;
-                for ($i = 1; $i <= $amount; $i++) {
-                    $dotProduct += $cache[$queryId][$i] * $cache[$rowId][$i];
-                }
-                $dot[$rowId][$queryId] = $dotProduct;
-
-                if (isset($driver) && $driver) {
-                    Cache::store($driver)->put('vector-lite-cache', $dot, $cacheTime);
-                }
-
-                return $dotProduct;
-            });
-
-            DB::connection()->getPdo()->sqliteCreateFunction('COSIM', function ($binaryRowVector, $binaryQueryVector) {
-                $queryVector = unpack('f*', hex2bin($binaryQueryVector));
-                $rowVector = unpack('f*', hex2bin($binaryRowVector));
-                $amount = count($queryVector);
-                $dotProduct = 0.0;
-                for ($i = 1; $i <= $amount; $i++) {
-                    $dotProduct += $queryVector[$i] * $rowVector[$i];
-                }
-
-                return $dotProduct;
-            });
+            DB::connection()->getPdo()->sqliteCreateFunction('COSIM', [VectorLite::class, 'cosineSimilarityBinary']);
 
             Blueprint::macro('vectorLite', function (string $column, $length = null, $fixed = false) {
                 /** @var Blueprint $this */
                 $this->binary($column, $length, $fixed)->nullable();
                 $this->float($column.'_norm')->nullable();
-                $this->string($column.'_hash')->nullable();
+                $this->string($column.'_hash')->nullable()->index();
                 if (config('vector-lite.use_clustering_dimensions', false)) {
                     $this->binary($column.'_small', $length, $fixed)->nullable();
                     $this->float($column.'_small_norm')->nullable();
-                    $this->string($column.'_small_hash')->nullable();
+                    $this->string($column.'_small_hash')->nullable()->index();
                 }
             });
 

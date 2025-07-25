@@ -50,6 +50,7 @@ abstract class VectorModel extends Model implements HasVectorType
     }
 
     /**
+     * @param  static[]  $models
      * @return VectorModelCollection<static>
      */
     public function newCollection(array $models = []): VectorModelCollection

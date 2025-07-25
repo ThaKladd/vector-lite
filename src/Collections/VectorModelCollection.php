@@ -3,28 +3,109 @@
 namespace ThaKladd\VectorLite\Collections;
 
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Database\Eloquent\Model;
+use ThaKladd\VectorLite\Models\VectorModel;
+use ThaKladd\VectorLite\VectorLite;
 
 /**
- * @template TModel of \Illuminate\Database\Eloquent\Model
+ * @template TModel of \ThaKladd\VectorLite\Models\VectorModel
  *
- * @extends \Illuminate\Database\Eloquent\Collection<int|string, TModel>
+ * @extends Collection<int|string, TModel>
  */
 class VectorModelCollection extends Collection
 {
-    public function searchBestByVector(array $vector, int $limit = 1, string $vectorKey = 'vector')
+    private static ?bool $useCache = null;
+
+    /**
+     * Calculates similarity between a model and the given vector.
+     */
+    private function computeSimilarity(VectorModel $model, array|string|VectorModel $vector): float
     {
-        // TODO: Work with _small
-        // TODO: Get vector key from model
-        // TODO: Implement the cosine similarity
-        // TODO: Figure out cache
-        // TODO: Exclude current if provided?
+        if (is_null(self::$useCache)) {
+            self::$useCache = config('vector-lite.use_cached_cosim', false);
+        }
+
+        $binaryVector = VectorLite::vectorToBinary($vector);
+
+        return self::$useCache
+            ? VectorLite::cosineSimilarityModelAndVectorCache($model, $binaryVector)
+            : VectorLite::cosineSimilarityModelAndVector($model, $binaryVector);
+    }
+
+    /**
+     * Search for the best matches with vector
+     */
+    public function searchBestByVector(array|string|VectorModel $vector, int $limit = 1): Collection
+    {
+        $similarityAlias = $vector::$similarityAlias;
+
         return $this
-            ->map(function ($item) {
-                // $item->similarity = cosine_similarity($vector, data_get($item, $vectorKey));
+            ->map(function ($item) use ($vector, $similarityAlias) {
+                $item->$similarityAlias = $this->computeSimilarity($item, $vector);
+
                 return $item;
             })
-            ->sortByDesc('similarity')
+            ->sortByDesc($vector::$similarityAlias)
             ->take($limit)
             ->values();
+    }
+
+    /**
+     * Sort the collection according to the similarity to vector
+     */
+    public function sortBySimilarityToVector(array|string|VectorModel $vector): static
+    {
+        $similarityAlias = $vector::$similarityAlias;
+
+        return $this->map(function ($item) use ($vector, $similarityAlias) {
+            $item->$similarityAlias = $this->computeSimilarity($item, $vector);
+
+            return $item;
+        })->sortByDesc($vector::$similarityAlias)->values();
+    }
+
+    /**
+     * Filter the collection according to a similarity threshold
+     */
+    public function filterAboveSimilarityThreshold(array|string|VectorModel $vector, float $threshold = 0.7): static
+    {
+        /** @var static */
+        return $this->filter(function ($item) use ($vector, $threshold) {
+            return $this->computeSimilarity($item, $vector) >= $threshold;
+        })->values();
+    }
+
+    /**
+     * Pluck only the similarities to the given vector
+     */
+    public function pluckSimilarities(array|string|VectorModel $vector): array
+    {
+        return $this
+            ->mapWithKeys(function ($item) use ($vector) {
+                return [$item->getKey() => $this->computeSimilarity($item, $vector)];
+            })
+            ->toArray();
+    }
+
+    /**
+     * Add similarities to a vector for every item into the collection
+     */
+    public function withSimilarities(array|string|VectorModel $vector): static
+    {
+        $similarityAlias = $vector::$similarityAlias;
+
+        return $this->map(function ($item) use ($vector, $similarityAlias) {
+            $item->$similarityAlias = $this->computeSimilarity($item, $vector);
+
+            return $item;
+        });
+    }
+
+    /**
+     * Return the best matched model from the collection
+     */
+    public function findBestByVector(array|string|VectorModel $vector): ?Model
+    {
+        return $this->searchBestByVector($vector, 1)->first();
     }
 }

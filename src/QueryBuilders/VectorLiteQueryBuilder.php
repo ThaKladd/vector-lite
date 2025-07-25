@@ -81,7 +81,7 @@ class VectorLiteQueryBuilder extends Builder
     {
         $resolvedModel = $this->resolveModel();
         $vectorArray = VectorLite::vectorToArray($vector);
-        $smallVectorArray = $resolvedModel->isCluster() ? VectorLite::reduceVector($this->resolveModel(), $vectorArray) : $vectorArray;
+        $smallVectorArray = $resolvedModel->isCluster() ? VectorLite::reduceVector($vectorArray) : $vectorArray;
 
         return VectorLite::vectorToBinary($smallVectorArray);
     }

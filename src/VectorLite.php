@@ -2,6 +2,7 @@
 
 namespace ThaKladd\VectorLite;
 
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use ThaKladd\VectorLite\Models\VectorModel;
@@ -29,6 +30,40 @@ class VectorLite
     protected bool $useSmallVector = false;
 
     public static array $clusterCache = [];
+
+    // Cache the unpacked vectors in a static variable - so it does not need to be unpacked each time
+    private static $cache = [];
+
+    // Cache of the dot products of all vectors calculated
+    private static $dot = [];
+
+    // Save the driver and cache time
+    private static $driver = null;
+
+    private static $cacheTime = false;
+
+    private static $useClusteringDimensions = null;
+
+    private static $dimensions = null;
+
+    private static $reduceByMethod = null;
+
+    private static bool $initialized = false;
+
+    private static function init(): void
+    {
+        if (self::$initialized) {
+            return;
+        }
+
+        self::$driver = config('vector-lite.cache_driver');
+        self::$cacheTime = config('vector-lite.cache_time');
+        self::$dot = Cache::get(self::$driver)?->get('vector-lite-cache', []);
+        self::$useClusteringDimensions = config('vector-lite.use_clustering_dimensions', false);
+        self::$dimensions = config('vector-lite.clustering_dimensions');
+        self::$reduceByMethod = config('vector-lite.reduction_method');
+        self::$initialized = true;
+    }
 
     public function __construct(?VectorModel $model = null)
     {
@@ -138,19 +173,30 @@ class VectorLite
         $modelVectorHash = $model->{$model::$vectorColumn.'_hash'};
         $modelVectorNorm = $model->{$model::$vectorColumn.'_norm'};
 
+        $smallVectors = [];
+        if ($this->useSmallVector) {
+            $modelVectorSmall = $model->{$model::$vectorColumn.'_small'};
+            $modelVectorSmallHash = $model->{$model::$vectorColumn.'_small_hash'};
+            $modelVectorSmallNorm = $model->{$model::$vectorColumn.'_small_norm'};
+
+            $smallVectors = [
+                $model::$vectorColumn.'_small' => $modelVectorSmall,
+                $model::$vectorColumn.'_small_hash' => $modelVectorSmallHash,
+                $model::$vectorColumn.'_small_norm' => $modelVectorSmallNorm,
+            ];
+        }
+
         /* @var class-string<VectorModel> $clusterModelName */
         $clusterModel = new $clusterModelName;
         $clusterModel->setRawAttributes([
-            'vector' => $modelVector,
-            'vector_hash' => $modelVectorHash,
-            'vector_norm' => $modelVectorNorm,
+            $model::$vectorColumn => $modelVector,
+            $model::$vectorColumn.'_hash' => $modelVectorHash,
+            $model::$vectorColumn.'_norm' => $modelVectorNorm,
+            ...$smallVectors,
             $this->countColumn => 1,
         ]);
 
         $clusterModel->save();
-        if ($this->useSmallVector) {
-            $this->reduceVector($clusterModel);
-        }
 
         return $clusterModel;
     }
@@ -330,7 +376,9 @@ class VectorLite
         if (is_string($vector)) {
             return $vector;
         } elseif (is_object($vector)) {
-            return $vector->$vector::$vectorColumn.self::smallVectorColumn($vector);
+            $vectorColumn = $vector::$vectorColumn.self::smallVectorColumn($vector);
+
+            return $vector->$vectorColumn;
         }
 
         [$vector, $norm] = self::normalizeToBinary($vector);
@@ -344,44 +392,215 @@ class VectorLite
      */
     public static function smallVectorColumn(?VectorModel $model): string
     {
-        return config('vector-lite.use_clustering_dimensions', false) ? '_small' : '';
+        if ($model->isCluster()) {
+            return config('vector-lite.use_clustering_dimensions', false) ? '_small' : '';
+        }
+
+        return '';
     }
 
     /**
      * When clusters use a smaller sized vector, this method reduces
      * the current vector down to the clusters smaller vector size
+     * on the model and saves it
      */
-    public static function reduceVector(VectorModel $model, ?array $vector = null): array
+    public static function reduceModelVector(VectorModel $model): array
     {
         $vectorColumn = $model::$vectorColumn;
         $vectorColumnSmall = $model::$vectorColumnSmall;
 
-        $vectorToReduce = $vector ?? self::denormalizeFromBinary($model->$vectorColumn, $model->{$vectorColumn.'_norm'});
-        if (config('vector-lite.use_clustering_dimensions', false)) {
+        $vectorToReduce = self::denormalizeFromBinary($model->$vectorColumn, $model->{$vectorColumn.'_norm'});
+        if (self::$useClusteringDimensions) {
             // If small vector exists, return it
-            if (is_null($vector) && $model->$vectorColumnSmall) {
+            if ($model->$vectorColumnSmall) {
                 return self::denormalizeFromBinary($model->$vectorColumnSmall, $model->{$vectorColumnSmall.'_norm'});
             }
 
-            $dimensions = config('vector-lite.clustering_dimensions');
-            $reduceByMethod = config('vector-lite.reduction_method');
-
             // Reduce the vector if it is bigger than the smaller dimension size
-            if ($dimensions < count($vectorToReduce)) {
-                $reducedVector = $reduceByMethod->reduceVector($vectorToReduce, $dimensions);
-                if (is_null($vector)) {
-                    [$smallBinaryVector, $norm] = self::normalizeToBinary($reducedVector);
-                    $model->update([
-                        $vectorColumnSmall => $smallBinaryVector,
-                        $vectorColumnSmall.'_hash' => self::hashVectorBlob($smallBinaryVector),
-                        $vectorColumnSmall.'_norm' => $norm,
-                    ]);
-                }
+            if (self::$dimensions < count($vectorToReduce)) {
+                $reducedVector = self::$reduceByMethod->reduceVector($vectorToReduce, self::$dimensions);
+
+                [$smallBinaryVector, $norm] = self::normalizeToBinary($reducedVector);
+                $model->update([
+                    $vectorColumnSmall => $smallBinaryVector,
+                    $vectorColumnSmall.'_hash' => self::hashVectorBlob($smallBinaryVector),
+                    $vectorColumnSmall.'_norm' => $norm,
+                ]);
 
                 return $reducedVector;
             }
         }
 
         return self::vectorToArray($vectorToReduce);
+    }
+
+    /**
+     * Reduce the vector down to the clusters smaller vector size
+     */
+    public static function reduceVector(array|string $vector): array
+    {
+        self::init();
+        $vectorToReduce = self::vectorToArray($vector);
+        if (self::$useClusteringDimensions) {
+            // Reduce the vector if it is bigger than the smaller dimension size
+            if (self::$dimensions < count($vectorToReduce)) {
+                return self::$reduceByMethod->reduceVector($vectorToReduce, self::$dimensions);
+            }
+        }
+
+        return $vectorToReduce;
+    }
+
+    /**
+     * Cosine similarity on binary vector with caching logic.
+     */
+    public static function cosineSimilarityBinaryCache(int|string|null $targetId, string $binaryTargetVector, int|string|null $queryId, string $binaryQueryVector): float
+    {
+        self::init();
+
+        // Check if the dot product is already cached
+        if (isset(self::$dot[$targetId][$queryId])) {
+            return self::$dot[$targetId][$queryId];
+        }
+
+        // Cache the unpacked vectors for the current session
+        if (! isset(self::$cache[$queryId])) {
+            self::$cache[$queryId] = unpack('f*', $binaryQueryVector);
+        }
+
+        if (! isset(self::$cache[$targetId])) {
+            self::$cache[$targetId] = unpack('f*', $binaryTargetVector);
+        }
+
+        self::$dot[$targetId][$queryId] = $dotProduct = self::dotProduct(self::$cache[$queryId], self::$cache[$targetId]);
+
+        if (isset(self::$driver) && self::$driver) {
+            Cache::store(self::$driver)->put('vector-lite-cache', self::$dot, self::$cacheTime);
+        }
+
+        return $dotProduct;
+    }
+
+    /**
+     * Cosine similarity with caching logic.
+     */
+    public static function cosineSimilarityCache(int|string $targetId, array $targetVector, int|string $queryId, array $queryVector): float
+    {
+        self::init();
+
+        // Check if the dot product is already cached
+        if (isset(self::$dot[$targetId][$queryId])) {
+            return self::$dot[$targetId][$queryId];
+        }
+
+        // Cache the unpacked vectors for the current session
+        if (! isset(self::$cache[$queryId])) {
+            self::$cache[$queryId] = $queryVector;
+        }
+
+        if (! isset(self::$cache[$targetId])) {
+            self::$cache[$targetId] = $targetVector;
+        }
+
+        self::$dot[$targetId][$queryId] = $dotProduct = self::dotProduct(self::$cache[$queryId], self::$cache[$targetId]);
+
+        if (isset(self::$driver) && self::$driver) {
+            Cache::store(self::$driver)->put('vector-lite-cache', self::$dot, self::$cacheTime);
+        }
+
+        return $dotProduct;
+    }
+
+    /**
+     * Cosine similarity on two models vectors.
+     */
+    public static function cosineSimilarityModelsCache(VectorModel $vectorModelA, VectorModel $vectorModelB): float
+    {
+        self::init();
+        $vectorColumn = $vectorModelA::$vectorColumn;
+        if (self::$useClusteringDimensions && $vectorModelA->isCluster()) {
+            $vectorColumn = $vectorColumn.'_small';
+        }
+        $vectorHashColumn = $vectorModelA::$vectorColumn.'_hash';
+
+        return self::cosineSimilarityBinaryCache($vectorModelA->$vectorHashColumn, $vectorModelA->$vectorColumn, $vectorModelB->$vectorHashColumn, $vectorModelB->$vectorColumn);
+    }
+
+    /**
+     * Cosine similarity on model vector and vector.
+     */
+    public static function cosineSimilarityModelAndVectorCache(VectorModel $vectorModel, string|array $queryVector): float
+    {
+        self::init();
+        $vectorColumn = $vectorModel::$vectorColumn;
+        if (self::$useClusteringDimensions && $vectorModel->isCluster()) {
+            $queryVector = self::reduceVector($queryVector);
+            $vectorColumn = $vectorColumn.'_small';
+        }
+
+        $targetVector = self::vectorToBinary($queryVector);
+        $vectorHashColumn = $vectorModel::$vectorColumn.'_hash';
+        $targetHash = self::hashVectorBlob($targetVector);
+
+        return self::cosineSimilarityBinaryCache($vectorModel->$vectorHashColumn, $vectorModel->$vectorColumn, $targetHash, $targetVector);
+    }
+
+    /**
+     * Cosine similarity on binary vectors.
+     */
+    public static function cosineSimilarityBinary(string $binaryTargetVector, string $binaryQueryVector): float
+    {
+        $queryVector = unpack('f*', $binaryQueryVector);
+        $targetVector = unpack('f*', $binaryTargetVector);
+
+        return self::dotProduct($targetVector, $queryVector);
+    }
+
+    /**
+     * Cosine similarity on model vector and vector.
+     */
+    public static function cosineSimilarityModels(VectorModel $vectorModelA, VectorModel $vectorModelB): float
+    {
+        $vectorColumn = $vectorModelA::$vectorColumn;
+
+        return self::cosineSimilarityBinary($vectorModelA->$vectorColumn, $vectorModelB->$vectorColumn);
+    }
+
+    /**
+     * Cosine similarity on model vector and vector.
+     */
+    public static function cosineSimilarityModelAndVector(VectorModel $vectorModel, string|array $queryVector): float
+    {
+        self::init();
+        $vectorColumn = $vectorModel::$vectorColumn;
+        if (self::$useClusteringDimensions && $vectorModel->isCluster()) {
+            $queryVector = self::vectorToBinary(self::reduceVector($queryVector));
+            $vectorColumn = $vectorColumn.'_small';
+        }
+
+        return self::cosineSimilarityBinary($vectorModel->$vectorColumn, $queryVector);
+    }
+
+    /**
+     * Cosine similarity on array vectors.
+     */
+    public static function cosineSimilarity(array $targetVector, array $queryVector): float
+    {
+        return self::dotProduct($targetVector, $queryVector);
+    }
+
+    /**
+     * Calculate the dot product of two vectors
+     */
+    public static function dotProduct(array $vectorA, array $vectorB): float
+    {
+        $amount = count($vectorA);
+
+        $dotProduct = 0.0;
+        for ($i = 1; $i <= $amount; $i++) {
+            $dotProduct += $vectorA[$i] * $vectorB[$i];
+        }
+
+        return $dotProduct;
     }
 }
