@@ -19,8 +19,6 @@ use ThaKladd\VectorLite\VectorLite;
  */
 trait HasVector
 {
-    public static string $vectorColumn = 'vector';
-
     public bool $useCache = false;
 
     public static function bootHasVector(): void
@@ -60,16 +58,6 @@ trait HasVector
                 $hashColumn = $model->getVectorHashColumn(self::vectorColumn());
                 $model->$hashColumn = $model->hashVectorBlob(self::vectorColumn());
             }
-
-            if (! empty($model->embedFields)) {
-                $text = $model->getEmbeddingText();
-                $hash = VectorLite::hashText($text);
-
-                if ($model->{self::embedHashColumn()} !== $hash) {
-                    $model->{self::embedHashColumn()} = $hash;
-                    $model->createEmbedding($text); // You already have this method in HasVector
-                }
-            }
         });
 
         static::saved(function ($model) {
@@ -78,6 +66,17 @@ trait HasVector
             if (Schema::hasTable($clusterTable) && $model->isDirty($model->{self::vectorColumn()}) && $model->{self::vectorColumn()}) {
                 // Delegate the clustering logic to a dedicated service
                 new VectorLite($model)->processUpdated($model);
+            }
+
+            if (! empty($model->embedFields)) {
+                $text = $model->getEmbeddingText();
+                $hash = VectorLite::hashText($text);
+
+                if ($model->{self::embedHashColumn()} !== $hash) {
+                    $model->{self::embedHashColumn()} = $hash;
+                    $model->saveQuietly();
+                    $model->createEmbedding($text);
+                }
             }
         });
 
@@ -255,8 +254,15 @@ trait HasVector
      */
     public function createEmbedding(string $text, ?int $dimensions = null): array
     {
-        $embeddingService = app(EmbeddingService::class);
-        $embedding = $embeddingService->createEmbedding($text, $dimensions);
+        $dimensions = $dimensions ?? config('vector-lite.default_dimensions');
+        $embeddingServiceKey = config('openai.api_key');
+        if ($embeddingServiceKey) {
+            $embeddingService = app(EmbeddingService::class);
+            $embedding = $embeddingService->createEmbedding($text, $dimensions);
+        } else {
+            $embedding = VectorLite::vectorToArray($this->{self::vectorColumn()});
+        }
+
         $reducedEmbedding = [];
         if (config('vector-lite.use_clustering_dimensions')) {
             $dimensions = config('vector-lite.clustering_dimensions');

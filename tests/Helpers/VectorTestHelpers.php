@@ -24,6 +24,9 @@ trait VectorTestHelpers
         [$binaryVector, $norm] = VectorLite::normalizeToBinary($vector);
 
         return [
+            'title' => 'test',
+            'other_id' => 1,
+            'embed_hash' => '529ba8695f839f00',
             'vector' => $isBatch ? $binaryVector : $vector,
             'vector_hash' => VectorLite::hashVectorBlob($binaryVector),
             'vector_norm' => $norm,
@@ -34,6 +37,12 @@ trait VectorTestHelpers
 
     private function createVectors(int $amount = 1000, int $dimensions = 1536, bool $isBatch = false): array
     {
+        DB::table('others')->insert([
+            'description' => 'test',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
         $records = [];
         for ($i = 0; $i < $amount; $i++) {
             $records[] = $this->createVectorRecord($dimensions, $isBatch);

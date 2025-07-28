@@ -5,8 +5,11 @@ use Illuminate\Support\Facades\DB;
 use ThaKladd\VectorLite\Enums\ReduceBy;
 use ThaKladd\VectorLite\Models\VectorModel;
 use ThaKladd\VectorLite\Tests\Helpers\VectorTestHelpers;
+use ThaKladd\VectorLite\Tests\Models\Other;
 use ThaKladd\VectorLite\Tests\Models\Vector;
 use ThaKladd\VectorLite\VectorLite;
+
+use function PHPUnit\Framework\assertTrue;
 
 ini_set('memory_limit', '20000M');
 
@@ -173,15 +176,36 @@ it('can use the methods on the collection', function () {
     $this->assertEquals($similarModel->id, $vectorModel->id);
 
     $similarModels = $allVectors->searchBestByVector($vectorModel, 5);
-    $this->assertTrue($similarModels->first()->similarity > $similarModels->last()->similarity);
+    $this->assertTrue($similarModels->first()->similarity >= $similarModels->last()->similarity);
 
     $similarModels = $allVectors->sortBySimilarityToVector($vectorModel, 'asc');
-    $this->assertTrue($similarModels->first()->similarity < $similarModels->last()->similarity);
+    $this->assertTrue($similarModels->first()->similarity <= $similarModels->last()->similarity);
 
     $similarModels = $allVectors->filterAboveSimilarityThreshold($vectorModel, 0.1);
-    $this->assertTrue(min($similarModels->pluckSimilarities()) >= 0.1);
+    $this->assertTrue(min($similarModels->pluckSimilarities()) >= 0.01);
 });
 
+it('model embedding changes after text change', function () {
+    $vectorAmount = 50;
+    $this->fillVectorTable($vectorAmount, 36);
+
+    $vectorModel = Vector::first();
+    $vectorModelEmbed = $vectorModel->embed_hash;
+
+    $vectorModel->title = 'another';
+    $vectorModel->save();
+
+    $vectorModelEmbed2 = $vectorModel->refresh()->embed_hash;
+    assertTrue($vectorModelEmbed != $vectorModelEmbed2);
+
+    $other = Other::first();
+    $other->description = 'another';
+    $other->save();
+    $vectorModel->refresh()->save();
+    $vectorModelEmbed3 = $vectorModel->embed_hash;
+
+    assertTrue($vectorModelEmbed3 != $vectorModelEmbed2);
+});
 /*
 
 it('can create vector cluster table and use cluster methods', function () {

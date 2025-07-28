@@ -66,11 +66,11 @@ class VectorModelCollection extends Collection
             return $item;
         });
 
-        if ($sortOrder === 'DESC') {
-            $map->sortByDesc($similarityAlias);
-        } elseif ($sortOrder === 'ASC') {
-            $map->sortBy($similarityAlias);
-        }
+        $map = match ($sortOrder) {
+            'DESC' => $map->sortByDesc(fn ($item) => (float) ($item->{$similarityAlias} ?? 0)),
+            'ASC' => $map->sortBy(fn ($item) => (float) ($item->{$similarityAlias} ?? 0)),
+            default => $map,
+        };
 
         return $map->values();
     }

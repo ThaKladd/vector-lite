@@ -17,7 +17,7 @@ abstract class VectorModel extends Model implements HasVectorType
      * Supports dot notation for nested relations.
      * Example: ['title', 'description', 'reviews.title', 'reviews.review']
      */
-    protected array $embedFields = [];
+    protected $embedFields = [];
 
     protected $fillable = [];
 
@@ -114,7 +114,6 @@ abstract class VectorModel extends Model implements HasVectorType
 
         // Relation
         $relation = $model->$first;
-
         if ($relation === null) {
             return '';
         }

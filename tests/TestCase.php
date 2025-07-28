@@ -83,8 +83,16 @@ class TestCase extends Orchestra
         Schema::dropIfExists($clusterTableName);
         Schema::dropIfExists($tableName);
 
+        Schema::create('others', function (Blueprint $table) {
+            $table->id();
+            $table->string('description')->nullable();
+            $table->timestamps();
+        });
+
         Schema::create($tableName, function (Blueprint $table) {
             $table->id();
+            $table->string('title')->nullable();
+            $table->foreignId('other_id')->nullable();
             $table->vectorLite('vector');
             $table->timestamps();
         });
