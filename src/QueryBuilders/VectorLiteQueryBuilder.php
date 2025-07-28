@@ -18,6 +18,8 @@ class VectorLiteQueryBuilder extends Builder
 {
     protected static ?bool $useClusterCache = null;
 
+    protected static array $hashColumnExistsCache = [];
+
     protected bool $similarityColumnSelected = false;
 
     protected bool $deferClusterFilter = false;
@@ -78,10 +80,9 @@ class VectorLiteQueryBuilder extends Builder
     /**
      * Get the binary version of the vector from multiple inputs
      */
-    protected function preparedBinaryVector(string|array $vector): string
+    protected function preparedBinaryVector(array $vectorArray): string
     {
         $resolvedModel = $this->resolveModel();
-        $vectorArray = VectorLite::vectorToArray($vector);
         $smallVectorArray = $resolvedModel->isCluster() ? VectorLite::reduceVector($vectorArray) : $vectorArray;
 
         return VectorLite::vectorToBinary($smallVectorArray);
@@ -103,9 +104,8 @@ class VectorLiteQueryBuilder extends Builder
     protected function qualifiedVectorColumnName(?VectorModel $model = null): string
     {
         $resolvedModel = $this->resolveModel($model);
-        $smallVectorColumn = $resolvedModel->isCluster() ? VectorLite::smallVectorColumn($resolvedModel) : '';
 
-        return $resolvedModel->getTable().'.'.$resolvedModel::vectorColumn().$smallVectorColumn;
+        return $resolvedModel->getTable().'.'.$this->vectorColumnNameWithSmall($resolvedModel);
     }
 
     /**
@@ -120,18 +120,24 @@ class VectorLiteQueryBuilder extends Builder
 
     /**
      * Filters the input to an array of keys
+     *
+     * @param  null|iterable<VectorModel>|VectorModel  $models
+     * @return array<int|string>
      */
     protected function filterToKeys(null|iterable|VectorModel $models): array
     {
-        $models = VectorModelCollection::wrap($models);
+        return VectorModelCollection::wrap($models)->pluck('id')->all();
+    }
 
-        return $models->map(function ($model) {
-            if (! $model instanceof VectorModel) {
-                throw new \InvalidArgumentException('Model to exclude has to be a VectorModel.');
-            }
+    /**
+     * Get the column name including the _small version if applicable
+     */
+    private function vectorColumnNameWithSmall(?VectorModel $model = null): string
+    {
+        $resolvedModel = $this->resolveModel($model);
+        $suffix = $resolvedModel->isCluster() ? VectorLite::smallVectorColumn($resolvedModel) : '';
 
-            return $model->getKey();
-        })->filter()->all();
+        return $resolvedModel::vectorColumn().$suffix;
     }
 
     /**
@@ -141,13 +147,16 @@ class VectorLiteQueryBuilder extends Builder
     public function getVectorHashColumn(?VectorModel $model = null): string
     {
         $resolvedModel = $this->resolveModel($model);
-        $smallVectorColumn = $resolvedModel->isCluster() ? VectorLite::smallVectorColumn($resolvedModel) : '';
-        $vectorHashColumn = $resolvedModel::vectorColumn().$smallVectorColumn.'_hash';
-        if (Schema::hasColumn($resolvedModel->getTable(), $vectorHashColumn)) {
-            return $vectorHashColumn;
+        $table = $resolvedModel->getTable();
+
+        $column = $this->vectorColumnNameWithSmall($resolvedModel).'_hash';
+        $key = "$table.$column";
+
+        if (! isset(self::$hashColumnExistsCache[$key])) {
+            self::$hashColumnExistsCache[$key] = Schema::hasColumn($table, $column);
         }
 
-        return "'{$resolvedModel->getTable()}:{$resolvedModel->getKey()}'";
+        return self::$hashColumnExistsCache[$key] ? $column : "'{$table}:{$resolvedModel->getKey()}'";
     }
 
     /**
@@ -167,13 +176,13 @@ class VectorLiteQueryBuilder extends Builder
      * The method needs one argument for the binding,
      * that is the same vector that is passed here
      */
-    protected function getCosimMethod(array|string $vector): string
+    protected function getCosimMethod(array $resolvedVector): string
     {
         $vectorColumn = $this->qualifiedVectorColumnName();
         if ($this->useCachedCosim()) {
 
             $hashColumn = $this->getVectorHashColumn();
-            $binaryVector = $this->preparedBinaryVector($vector);
+            $binaryVector = $this->preparedBinaryVector($resolvedVector);
             $hashedSmallVector = VectorLite::hashVectorBlob($binaryVector);
 
             return "COSIM_CACHE({$hashColumn}, {$vectorColumn}, '{$hashedSmallVector}', ?)";
@@ -264,7 +273,7 @@ class VectorLiteQueryBuilder extends Builder
         $resolvedVector = $this->resolveVector($vector, $excludeInputModel);
 
         $this->selectWithSimilarity($resolvedVector);
-        $this->orderBySimilarity();
+        $this->orderBySimilarity($resolvedVector);
 
         if ($model->getKey()) {
             $this->withoutModels($model);
@@ -343,12 +352,12 @@ class VectorLiteQueryBuilder extends Builder
             return $this;
         }
 
-        $vector = $this->resolveVector($vector);
+        $resolvedVector = $this->resolveVector($vector);
 
         // Otherwise, compute the similarity on the fly.
         // (Note: Using HAVING RAW here because operators and bindings must be inline.)
-        $cosimMethodCall = $this->getCosimMethod($vector);
-        $binaryVector = $this->preparedBinaryVector($vector);
+        $cosimMethodCall = $this->getCosimMethod($resolvedVector);
+        $binaryVector = $this->preparedBinaryVector($resolvedVector);
         $this->havingRaw("$cosimMethodCall $operator ?", [$binaryVector, $threshold]);
 
         return $this;
@@ -370,11 +379,11 @@ class VectorLiteQueryBuilder extends Builder
             return $this;
         }
 
-        $vector = $this->resolveVector($vector);
+        $resolvedVector = $this->resolveVector($vector);
         // Otherwise, compute the similarity on the fly.
         // (Note: Using ORDER BY RAW here because operators and bindings must be inline.)
-        $cosimMethodCall = $this->getCosimMethod($vector);
-        $binaryVector = $this->preparedBinaryVector($vector);
+        $cosimMethodCall = $this->getCosimMethod($resolvedVector);
+        $binaryVector = $this->preparedBinaryVector($resolvedVector);
         $this->orderByRaw("$cosimMethodCall $direction", [$binaryVector]);
 
         return $this;

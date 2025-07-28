@@ -121,4 +121,15 @@ class VectorModelCollection extends Collection
     {
         return $this->searchBestByVector($vector, 1)->first();
     }
+
+    /**
+     * Wraps the given value in a VectorModelCollection.
+     *
+     * @param  TModel|iterable<TModel>|null  $value
+     * @return self<TModel>
+     */
+    public static function wrap($value): self
+    {
+        return new self(parent::wrap($value)->all());
+    }
 }
