@@ -166,13 +166,13 @@ use ThaKladd\VectorLite\VectorLite;
 
 ## Testing & Fixing
 
-For running the tests:
+For running the PHPUnit tests:
 
 ```bash
 ddev composer test
 ```
 
-For fixing the code style:
+For fixing the code style with Pint:
 
 ```bash
 ddev exec vendor/bin/pint
