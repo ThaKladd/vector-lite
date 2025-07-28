@@ -5,6 +5,7 @@ namespace ThaKladd\VectorLite\Collections;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Model;
 use ThaKladd\VectorLite\Models\VectorModel;
+use ThaKladd\VectorLite\Support\SqlValidator;
 use ThaKladd\VectorLite\VectorLite;
 
 /**
@@ -37,15 +38,15 @@ class VectorModelCollection extends Collection
      */
     public function searchBestByVector(array|string|VectorModel $vector, int $limit = 1): Collection
     {
-        $similarityAlias = $vector::$similarityAlias;
+        $similarityAlias = VectorModel::similarityAlias();
 
         return $this
             ->map(function ($item) use ($vector, $similarityAlias) {
-                $item->$similarityAlias = $this->computeSimilarity($item, $vector);
+                $item->{$similarityAlias} = $this->computeSimilarity($item, $vector);
 
                 return $item;
             })
-            ->sortByDesc($vector::$similarityAlias)
+            ->sortByDesc($similarityAlias)
             ->take($limit)
             ->values();
     }
@@ -53,15 +54,25 @@ class VectorModelCollection extends Collection
     /**
      * Sort the collection according to the similarity to vector
      */
-    public function sortBySimilarityToVector(array|string|VectorModel $vector): static
+    public function sortBySimilarityToVector(array|string|VectorModel $vector, string $sortOrder = 'desc'): static
     {
-        $similarityAlias = $vector::$similarityAlias;
+        $sortOrder = strtoupper($sortOrder);
+        SqlValidator::validateDirection($sortOrder);
+        $similarityAlias = VectorModel::similarityAlias();
 
-        return $this->map(function ($item) use ($vector, $similarityAlias) {
+        $map = $this->map(function ($item) use ($vector, $similarityAlias) {
             $item->$similarityAlias = $this->computeSimilarity($item, $vector);
 
             return $item;
-        })->sortByDesc($vector::$similarityAlias)->values();
+        });
+
+        if ($sortOrder === 'DESC') {
+            $map->sortByDesc($similarityAlias);
+        } elseif ($sortOrder === 'ASC') {
+            $map->sortBy($similarityAlias);
+        }
+
+        return $map->values();
     }
 
     /**
@@ -78,11 +89,13 @@ class VectorModelCollection extends Collection
     /**
      * Pluck only the similarities to the given vector
      */
-    public function pluckSimilarities(array|string|VectorModel $vector): array
+    public function pluckSimilarities(null|array|string|VectorModel $vector = null): array
     {
+        $similarityAlias = VectorModel::similarityAlias();
+
         return $this
-            ->mapWithKeys(function ($item) use ($vector) {
-                return [$item->getKey() => $this->computeSimilarity($item, $vector)];
+            ->mapWithKeys(function ($item) use ($vector, $similarityAlias) {
+                return [$item->getKey() => $vector ? $this->computeSimilarity($item, $vector) : $item->$similarityAlias];
             })
             ->toArray();
     }
@@ -92,7 +105,7 @@ class VectorModelCollection extends Collection
      */
     public function withSimilarities(array|string|VectorModel $vector): static
     {
-        $similarityAlias = $vector::$similarityAlias;
+        $similarityAlias = VectorModel::similarityAlias();
 
         return $this->map(function ($item) use ($vector, $similarityAlias) {
             $item->$similarityAlias = $this->computeSimilarity($item, $vector);

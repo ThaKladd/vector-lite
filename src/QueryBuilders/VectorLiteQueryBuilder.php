@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\Schema;
 use ThaKladd\VectorLite\Collections\VectorModelCollection;
 use ThaKladd\VectorLite\Models\VectorModel;
+use ThaKladd\VectorLite\Support\SqlValidator;
 use ThaKladd\VectorLite\VectorLite;
 
 /**
@@ -104,7 +105,7 @@ class VectorLiteQueryBuilder extends Builder
         $resolvedModel = $this->resolveModel($model);
         $smallVectorColumn = $resolvedModel->isCluster() ? VectorLite::smallVectorColumn($resolvedModel) : '';
 
-        return $resolvedModel->getTable().'.'.$resolvedModel::$vectorColumn.$smallVectorColumn;
+        return $resolvedModel->getTable().'.'.$resolvedModel::vectorColumn().$smallVectorColumn;
     }
 
     /**
@@ -141,33 +142,12 @@ class VectorLiteQueryBuilder extends Builder
     {
         $resolvedModel = $this->resolveModel($model);
         $smallVectorColumn = $resolvedModel->isCluster() ? VectorLite::smallVectorColumn($resolvedModel) : '';
-        $vectorHashColumn = $resolvedModel::$vectorColumn.$smallVectorColumn.'_hash';
+        $vectorHashColumn = $resolvedModel::vectorColumn().$smallVectorColumn.'_hash';
         if (Schema::hasColumn($resolvedModel->getTable(), $vectorHashColumn)) {
             return $vectorHashColumn;
         }
 
         return "'{$resolvedModel->getTable()}:{$resolvedModel->getKey()}'";
-    }
-
-    /**
-     * Validate the operator to avoid SQL injection.
-     */
-    protected function verifyOperator(string $operator): void
-    {
-        $allowed = ['=', '>', '<', '>=', '<=', '<>', '!='];
-        if (! in_array($operator, $allowed, true)) {
-            throw new \InvalidArgumentException("Invalid operator [$operator] provided.");
-        }
-    }
-
-    /**
-     * Validate the direction to avoid SQL injection or mistakes.
-     */
-    protected function verifyDirection(string $direction): void
-    {
-        if (! in_array($direction, ['ASC', 'DESC'], true)) {
-            throw new \InvalidArgumentException("Invalid direction [$direction] provided.");
-        }
     }
 
     /**
@@ -178,7 +158,7 @@ class VectorLiteQueryBuilder extends Builder
         $model = $this->resolveModel();
         $cosimMethodCall = $this->getCosimMethod($resolvedVector);
         $binaryVector = $this->preparedBinaryVector($resolvedVector);
-        $this->selectRaw("{$model->getTable()}.*, {$cosimMethodCall} as {$model::$similarityAlias}", [$binaryVector]);
+        $this->selectRaw("{$model->getTable()}.*, {$cosimMethodCall} as {$model::similarityAlias()}", [$binaryVector]);
         $this->similarityColumnSelected = true;
     }
 
@@ -323,7 +303,7 @@ class VectorLiteQueryBuilder extends Builder
      */
     public function whereVector(array|string|VectorModel $vector, string $operator = '>', float $threshold = 0.0): static
     {
-        $this->verifyOperator($operator);
+        SqlValidator::validateOperator($operator);
         $cosimMethodCall = $this->getCosimMethod($vector);
         $binaryVector = $this->preparedBinaryVector($vector);
         $this->whereRaw("$cosimMethodCall $operator ?", [$binaryVector, $threshold]);
@@ -353,12 +333,12 @@ class VectorLiteQueryBuilder extends Builder
      */
     public function havingSimilarity(array|string|null|VectorModel $vector = null, string $operator = '>', float $threshold = 0.0): static
     {
-        $this->verifyOperator($operator);
+        SqlValidator::validateOperator($operator);
 
         $model = $this->resolveModel();
         if ($this->shouldUseSimilarityAlias($vector)) {
             // If the similarity column is already selected, use it in the HAVING clause.
-            $this->having($model::$similarityAlias, $operator, $threshold);
+            $this->having($model::similarityAlias(), $operator, $threshold);
 
             return $this;
         }
@@ -380,12 +360,12 @@ class VectorLiteQueryBuilder extends Builder
     public function orderBySimilarity(array|string|null|VectorModel $vector = null, string $direction = 'DESC'): static
     {
         $direction = strtoupper($direction);
-        $this->verifyDirection($direction);
+        SqlValidator::validateDirection($direction);
 
         $model = $this->resolveModel();
         if ($this->shouldUseSimilarityAlias($vector)) {
             // If the similarity column is already selected, use it in the ORDER BY clause.
-            $this->orderBy($model::$similarityAlias, $direction);
+            $this->orderBy($model::similarityAlias(), $direction);
 
             return $this;
         }

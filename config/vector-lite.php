@@ -4,6 +4,20 @@
 return [
     /*
     |--------------------------------------------------------------------------
+    | Column names
+    |--------------------------------------------------------------------------
+    |
+    | To give a little bit of customizability, you can change the column names
+    | of a few columns with their base name. The variations of
+    | _small, _hash, and _norm are added automatically
+    |
+    */
+    'similarity_alias' => 'similarity', // The calculated match
+    'vector_column' => 'vector', // Column storing the vector
+    'embed_hash_column' => 'embed_hash', // Hash that check the changes in the vector data
+
+    /*
+    |--------------------------------------------------------------------------
     | OpenAi API Key
     |--------------------------------------------------------------------------
     |

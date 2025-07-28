@@ -19,11 +19,7 @@ use ThaKladd\VectorLite\VectorLite;
  */
 trait HasVector
 {
-    public static string $similarityAlias = 'similarity';
-
     public static string $vectorColumn = 'vector';
-
-    public static string $vectorColumnSmall = 'vector_small';
 
     public bool $useCache = false;
 
@@ -31,8 +27,8 @@ trait HasVector
     {
         static::creating(function ($model) {
             // Make sure the computed attribute is not saved
-            if (array_key_exists(self::$similarityAlias, $model->attributes)) {
-                unset($model->attributes[self::$similarityAlias]);
+            if (array_key_exists(self::similarityAlias(), $model->attributes)) {
+                unset($model->attributes[self::similarityAlias()]);
             }
         });
 
@@ -51,7 +47,7 @@ trait HasVector
             // $model->vector = VectorLite::normalizeToBinary($model->vector);
             // Only attempt clustering if a clusters table exists
             $clusterTable = $model->getClusterTableName();
-            if (Schema::hasTable($clusterTable) && $model->{self::$vectorColumn}) {
+            if (Schema::hasTable($clusterTable) && $model->{self::vectorColumn()}) {
                 // Delegate the clustering logic to a dedicated service
                 new VectorLite($model)->processCreated($model);
             }
@@ -60,16 +56,26 @@ trait HasVector
 
         static::saving(function ($model) {
             // If the vector column is dirty, re-create hash
-            if ($model->isDirty($model->{self::$vectorColumn})) {
-                $hashColumn = $model->getVectorHashColumn(self::$vectorColumn);
-                $model->$hashColumn = $model->hashVectorBlob(self::$vectorColumn);
+            if ($model->isDirty($model->{self::vectorColumn()})) {
+                $hashColumn = $model->getVectorHashColumn(self::vectorColumn());
+                $model->$hashColumn = $model->hashVectorBlob(self::vectorColumn());
+            }
+
+            if (! empty($model->embedFields)) {
+                $text = $model->getEmbeddingText();
+                $hash = VectorLite::hashText($text);
+
+                if ($model->{self::embedHashColumn()} !== $hash) {
+                    $model->{self::embedHashColumn()} = $hash;
+                    $model->createEmbedding($text); // You already have this method in HasVector
+                }
             }
         });
 
         static::saved(function ($model) {
             // If saved, and the vector column was dirty, re-calculate the cluster
             $clusterTable = $model->getClusterTableName();
-            if (Schema::hasTable($clusterTable) && $model->isDirty($model->{self::$vectorColumn}) && $model->{self::$vectorColumn}) {
+            if (Schema::hasTable($clusterTable) && $model->isDirty($model->{self::vectorColumn()}) && $model->{self::vectorColumn()}) {
                 // Delegate the clustering logic to a dedicated service
                 new VectorLite($model)->processUpdated($model);
             }
@@ -78,11 +84,26 @@ trait HasVector
         static::deleted(function ($model) {
             // If deleted, remove from the cluster
             $clusterTable = $model->getClusterTableName();
-            if (Schema::hasTable($clusterTable) && $model->{self::$vectorColumn}) {
+            if (Schema::hasTable($clusterTable) && $model->{self::vectorColumn()}) {
                 // Delegate the clustering logic to a dedicated service
                 new VectorLite($model)->processDelete($model);
             }
         });
+    }
+
+    public static function similarityAlias(): string
+    {
+        return config('vector-lite.similarity_alias', 'similarity');
+    }
+
+    public static function vectorColumn(): string
+    {
+        return config('vector-lite.vector_column', 'vector');
+    }
+
+    public static function embedHashColumn(): string
+    {
+        return config('vector-lite.embed_hash_column', 'embed_hash');
     }
 
     public function newEloquentBuilder($query): VectorLiteQueryBuilder
@@ -97,8 +118,8 @@ trait HasVector
     {
         $this->useCache = config('vector-lite.use_cached_cosim', false);
         // Ensure 'similarity' is in the appended attributes.
-        if (! in_array(self::$similarityAlias, $this->appends)) {
-            $this->appends[] = self::$similarityAlias;
+        if (! in_array(self::similarityAlias(), $this->appends)) {
+            $this->appends[] = self::similarityAlias();
         }
     }
 
@@ -164,7 +185,7 @@ trait HasVector
     public function getSimilarityAttribute(): ?float
     {
         // Use the dynamic column name stored in $this->similarityAlias, defaulting to 'similarity'
-        return isset($this->attributes[self::$similarityAlias]) ? (float) $this->attributes[self::$similarityAlias] : null;
+        return isset($this->attributes[self::similarityAlias()]) ? (float) $this->attributes[self::similarityAlias()] : null;
     }
 
     /**
@@ -201,9 +222,9 @@ trait HasVector
         // Pack array of floats into binary format
         // If not an array, assume it's already binary or handle error
         [$binaryVector, $norm] = VectorLite::normalizeToBinary($vector);
-        $this->attributes[self::$vectorColumn] = $binaryVector;
-        $this->attributes[self::$vectorColumn.'_norm'] = $norm;
-        $this->attributes[self::$vectorColumn.'_hash'] = VectorLite::hashVectorBlob($binaryVector);
+        $this->attributes[self::vectorColumn()] = $binaryVector;
+        $this->attributes[self::vectorColumn().'_norm'] = $norm;
+        $this->attributes[self::vectorColumn().'_hash'] = VectorLite::hashVectorBlob($binaryVector);
 
         if (config('vector-lite.use_clustering_dimensions', false)) {
             // Reduce the vector if it is bigger than the smaller dimension size
@@ -213,9 +234,9 @@ trait HasVector
             if ($reduceDimensions < count($vector)) {
                 $reducedVector = $reduceByMethod->reduceVector($vector, $reduceDimensions);
                 [$reducedBinaryVector, $reducedNorm] = VectorLite::normalizeToBinary($reducedVector);
-                $this->attributes[self::$vectorColumn.'_small'] = $reducedBinaryVector;
-                $this->attributes[self::$vectorColumn.'_small_norm'] = $reducedNorm;
-                $this->attributes[self::$vectorColumn.'_small_hash'] = VectorLite::hashVectorBlob($reducedBinaryVector);
+                $this->attributes[self::vectorColumn().'_small'] = $reducedBinaryVector;
+                $this->attributes[self::vectorColumn().'_small_norm'] = $reducedNorm;
+                $this->attributes[self::vectorColumn().'_small_hash'] = VectorLite::hashVectorBlob($reducedBinaryVector);
             }
         }
     }
@@ -271,7 +292,7 @@ trait HasVector
         /** @var class-string<VectorModel> $clusterClass */
         $clusterClass = $this->getClusterModelName();
         $small = VectorLite::smallVectorColumn($this);
-        $attribute = self::$vectorColumn.$small;
+        $attribute = self::vectorColumn().$small;
 
         return $clusterClass::searchBestByVector($this->$attribute, $amount);
     }

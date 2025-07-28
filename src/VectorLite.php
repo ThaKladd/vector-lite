@@ -129,7 +129,7 @@ class VectorLite
 
             $smallVector = ($this->useSmallVector ? '_small' : '');
             $vectorColumn = $this->clusterTable.'.vector'.$smallVector;
-            $modelVectorColumn = $model::$vectorColumn.$smallVector;
+            $modelVectorColumn = $model::vectorColumn().$smallVector;
             $modelVector = $model->$modelVectorColumn;
             $modelVectorHash = $model->{$modelVectorColumn.'_hash'};
 
@@ -169,29 +169,29 @@ class VectorLite
     protected function createNewCluster(VectorModel $model): object
     {
         $clusterModelName = $this->clusterModelName;
-        $modelVector = $model->{$model::$vectorColumn};
-        $modelVectorHash = $model->{$model::$vectorColumn.'_hash'};
-        $modelVectorNorm = $model->{$model::$vectorColumn.'_norm'};
+        $modelVector = $model->{$model::vectorColumn()};
+        $modelVectorHash = $model->{$model::vectorColumn().'_hash'};
+        $modelVectorNorm = $model->{$model::vectorColumn().'_norm'};
 
         $smallVectors = [];
         if ($this->useSmallVector) {
-            $modelVectorSmall = $model->{$model::$vectorColumn.'_small'};
-            $modelVectorSmallHash = $model->{$model::$vectorColumn.'_small_hash'};
-            $modelVectorSmallNorm = $model->{$model::$vectorColumn.'_small_norm'};
+            $modelVectorSmall = $model->{$model::vectorColumn().'_small'};
+            $modelVectorSmallHash = $model->{$model::vectorColumn().'_small_hash'};
+            $modelVectorSmallNorm = $model->{$model::vectorColumn().'_small_norm'};
 
             $smallVectors = [
-                $model::$vectorColumn.'_small' => $modelVectorSmall,
-                $model::$vectorColumn.'_small_hash' => $modelVectorSmallHash,
-                $model::$vectorColumn.'_small_norm' => $modelVectorSmallNorm,
+                $model::vectorColumn().'_small' => $modelVectorSmall,
+                $model::vectorColumn().'_small_hash' => $modelVectorSmallHash,
+                $model::vectorColumn().'_small_norm' => $modelVectorSmallNorm,
             ];
         }
 
         /* @var class-string<VectorModel> $clusterModelName */
         $clusterModel = new $clusterModelName;
         $clusterModel->setRawAttributes([
-            $model::$vectorColumn => $modelVector,
-            $model::$vectorColumn.'_hash' => $modelVectorHash,
-            $model::$vectorColumn.'_norm' => $modelVectorNorm,
+            $model::vectorColumn() => $modelVector,
+            $model::vectorColumn().'_hash' => $modelVectorHash,
+            $model::vectorColumn().'_norm' => $modelVectorNorm,
             ...$smallVectors,
             $this->countColumn => 1,
         ]);
@@ -233,7 +233,7 @@ class VectorLite
 
         $smallVector = ($this->useSmallVector ? '_small' : '');
         $clusterVectorColumn = $this->clusterTable.'.vector'.$smallVector;
-        $modelVectorColumn = ($leastSimilarModel::$vectorColumn).$smallVector;
+        $modelVectorColumn = ($leastSimilarModel::vectorColumn()).$smallVector;
 
         // Iterate through the rest of the models in the cluster.
         /** @var \ThaKladd\VectorLite\Models\VectorModel $leastMatchModel */
@@ -351,7 +351,15 @@ class VectorLite
             [$vector, $norm] = VectorLite::normalizeToBinary($vector);
         }
 
-        return hash('xxh3', $vector);
+        return self::hashText($vector);
+    }
+
+    /**
+     * Hashes text
+     */
+    public static function hashText(string $text): string
+    {
+        return hash('xxh3', $text);
     }
 
     /**
@@ -365,7 +373,7 @@ class VectorLite
             return self::binaryVectorToArray($vector);
         }
 
-        return self::vectorToArray($vector->{$vector::$vectorColumn});
+        return self::vectorToArray($vector->{$vector::vectorColumn()});
     }
 
     /**
@@ -376,7 +384,7 @@ class VectorLite
         if (is_string($vector)) {
             return $vector;
         } elseif (is_object($vector)) {
-            $vectorColumn = $vector::$vectorColumn.self::smallVectorColumn($vector);
+            $vectorColumn = $vector::vectorColumn().self::smallVectorColumn($vector);
 
             return $vector->$vectorColumn;
         }
@@ -406,8 +414,8 @@ class VectorLite
      */
     public static function reduceModelVector(VectorModel $model): array
     {
-        $vectorColumn = $model::$vectorColumn;
-        $vectorColumnSmall = $model::$vectorColumnSmall;
+        $vectorColumn = $model::vectorColumn();
+        $vectorColumnSmall = $model::{$vectorColumn.'_small'};
 
         $vectorToReduce = self::denormalizeFromBinary($model->$vectorColumn, $model->{$vectorColumn.'_norm'});
         if (self::$useClusteringDimensions) {
@@ -517,11 +525,11 @@ class VectorLite
     public static function cosineSimilarityModelsCache(VectorModel $vectorModelA, VectorModel $vectorModelB): float
     {
         self::init();
-        $vectorColumn = $vectorModelA::$vectorColumn;
+        $vectorColumn = $vectorModelA::vectorColumn();
         if (self::$useClusteringDimensions && $vectorModelA->isCluster()) {
             $vectorColumn = $vectorColumn.'_small';
         }
-        $vectorHashColumn = $vectorModelA::$vectorColumn.'_hash';
+        $vectorHashColumn = $vectorModelA::vectorColumn().'_hash';
 
         return self::cosineSimilarityBinaryCache($vectorModelA->$vectorHashColumn, $vectorModelA->$vectorColumn, $vectorModelB->$vectorHashColumn, $vectorModelB->$vectorColumn);
     }
@@ -532,14 +540,14 @@ class VectorLite
     public static function cosineSimilarityModelAndVectorCache(VectorModel $vectorModel, string|array $queryVector): float
     {
         self::init();
-        $vectorColumn = $vectorModel::$vectorColumn;
+        $vectorColumn = $vectorModel::vectorColumn();
         if (self::$useClusteringDimensions && $vectorModel->isCluster()) {
             $queryVector = self::reduceVector($queryVector);
             $vectorColumn = $vectorColumn.'_small';
         }
 
         $targetVector = self::vectorToBinary($queryVector);
-        $vectorHashColumn = $vectorModel::$vectorColumn.'_hash';
+        $vectorHashColumn = $vectorModel::vectorColumn().'_hash';
         $targetHash = self::hashVectorBlob($targetVector);
 
         return self::cosineSimilarityBinaryCache($vectorModel->$vectorHashColumn, $vectorModel->$vectorColumn, $targetHash, $targetVector);
@@ -561,7 +569,7 @@ class VectorLite
      */
     public static function cosineSimilarityModels(VectorModel $vectorModelA, VectorModel $vectorModelB): float
     {
-        $vectorColumn = $vectorModelA::$vectorColumn;
+        $vectorColumn = $vectorModelA::vectorColumn();
 
         return self::cosineSimilarityBinary($vectorModelA->$vectorColumn, $vectorModelB->$vectorColumn);
     }
@@ -572,7 +580,7 @@ class VectorLite
     public static function cosineSimilarityModelAndVector(VectorModel $vectorModel, string|array $queryVector): float
     {
         self::init();
-        $vectorColumn = $vectorModel::$vectorColumn;
+        $vectorColumn = $vectorModel::vectorColumn();
         if (self::$useClusteringDimensions && $vectorModel->isCluster()) {
             $queryVector = self::vectorToBinary(self::reduceVector($queryVector));
             $vectorColumn = $vectorColumn.'_small';

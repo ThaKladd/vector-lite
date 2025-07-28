@@ -60,7 +60,7 @@ return new class extends Migration {
     {
         Schema::create('{{newTable}}', function (Blueprint $table) {
             $table->id();
-            $table->vectorLite('vector');
+            $table->vectorLiteCluster('vector');
             $table->integer('{{modelTable}}_count')->default(0);
             $table->timestamps();
         });

@@ -174,6 +174,12 @@ it('can use the methods on the collection', function () {
 
     $similarModels = $allVectors->searchBestByVector($vectorModel, 5);
     $this->assertTrue($similarModels->first()->similarity > $similarModels->last()->similarity);
+
+    $similarModels = $allVectors->sortBySimilarityToVector($vectorModel, 'asc');
+    $this->assertTrue($similarModels->first()->similarity < $similarModels->last()->similarity);
+
+    $similarModels = $allVectors->filterAboveSimilarityThreshold($vectorModel, 0.1);
+    $this->assertTrue(min($similarModels->pluckSimilarities()) >= 0.1);
 });
 
 /*

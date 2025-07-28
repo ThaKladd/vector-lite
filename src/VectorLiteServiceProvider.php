@@ -20,7 +20,10 @@ class VectorLiteServiceProvider extends PackageServiceProvider
 
             DB::connection()->getPdo()->sqliteCreateFunction('COSIM', [VectorLite::class, 'cosineSimilarityBinary']);
 
-            Blueprint::macro('vectorLite', function (string $column, $length = null, $fixed = false) {
+            /**
+             * @method Blueprint vectorLiteColumns(string $column, $length = null, $fixed = false)
+             */
+            Blueprint::macro('vectorLiteColumns', function (string $column, $length = null, $fixed = false) {
                 /** @var Blueprint $this */
                 $this->binary($column, $length, $fixed)->nullable();
                 $this->float($column.'_norm')->nullable();
@@ -32,7 +35,27 @@ class VectorLiteServiceProvider extends PackageServiceProvider
                 }
             });
 
-            Blueprint::macro('dropVectorLite', function (string $column) {
+            /**
+             * @method Blueprint vectorLite(string $column, $length = null, $fixed = false)
+             */
+            Blueprint::macro('vectorLite', function (string $column, $length = null, $fixed = false) {
+                /** @var Blueprint $this */
+                $this->float('embed_hash')->nullable();
+                $this->vectorLiteColumns($column, $length, $fixed);
+            });
+
+            /**
+             * @method Blueprint vectorLiteCluster(string $column, $length = null, $fixed = false)
+             */
+            Blueprint::macro('vectorLiteCluster', function (string $column, $length = null, $fixed = false) {
+                /** @var Blueprint $this */
+                $this->vectorLiteColumns($column, $length, $fixed);
+            });
+
+            /**
+             * @method Blueprint dropVectorLiteColumns(string $column)
+             */
+            Blueprint::macro('dropVectorLiteColumns', function (string $column) {
                 /** @var Blueprint $this */
                 $this->dropColumn($column);
                 $this->dropColumn($column.'_norm');
@@ -43,6 +66,15 @@ class VectorLiteServiceProvider extends PackageServiceProvider
                     $this->dropColumn($column.'_small_norm');
                     $this->dropColumn($column.'_small_hash');
                 }
+            });
+
+            /**
+             * @method Blueprint dropVectorLite(string $column)
+             */
+            Blueprint::macro('dropVectorLite', function (string $column) {
+                /** @var Blueprint $this */
+                $this->dropColumn('embed_hash');
+                $this->dropVectorLiteColumns($column);
             });
         }
 
