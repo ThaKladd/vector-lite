@@ -23,21 +23,11 @@ it('can connect to database', function () {
 it('can create vector table and use vector methods', function () {
     $vectorAmount = 100;
 
-    // Create the table
-    // Artisan::call('vector-lite:make', ['model' => 'Vector']);
-
     // Check if the table exists
     $this->assertTrue(DB::getSchemaBuilder()->hasTable('vectors'));
 
-    // Print out the table columns
-    // $columns = DB::getSchemaBuilder()->getColumnListing('vectors');
-
-    // $columns = DB::getSchemaBuilder()->getColumnListing('vectors_clusters');
-
     // Fill the table with random vectors
     $this->fillVectorTable($vectorAmount, 36);
-
-    // $this->fillVectorClusterTable(100, 36);
 
     // Check if the vectors are inserted
     $vectors = DB::table('vectors')->count();
@@ -45,7 +35,7 @@ it('can create vector table and use vector methods', function () {
     $this->assertSame($vectors, $vectorAmount);
 
     $vectorModel = Vector::query()->inRandomOrder()->first();
-    // dump('$vectorModel', $vectorModel);
+
     $this->assertNotNull($vectorModel);
     $this->assertNotEmpty($vectorModel->vector);
 
@@ -206,15 +196,3 @@ it('model embedding changes after text change', function () {
 
     assertTrue($vectorModelEmbed3 != $vectorModelEmbed2);
 });
-/*
-
-it('can create vector cluster table and use cluster methods', function () {
-    $this->fillVectorClusterTable(100, 36);
-
-    // Check if the table exists
-    $this->assertTrue(DB::getSchemaBuilder()->hasTable('vectors_clusters'));
-
-    $vectors = DB::table('vectors_clusters')->count();
-    $this->assertTrue($vectors > 0);
-});
-*/

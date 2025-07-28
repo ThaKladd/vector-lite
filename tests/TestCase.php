@@ -16,19 +16,8 @@ class TestCase extends Orchestra
 {
     protected function setUp(): void
     {
-        // 1) Boot the application and register your service provider (so $table->vectorLite() is available)
         parent::setUp();
-
-        // 2) Ensure our sqlite file exists (file-based so Artisan sees the same DB)
-        $path = database_path('testing.sqlite');
-        if (! file_exists($path)) {
-            touch($path);
-        }
-
-        // 3) Now do our manual schema + package commands
         $this->setUpDatabase();
-
-        // 4) Factory name guessing (optional)
         Factory::guessFactoryNamesUsing(
             fn (string $model) => 'ThaKladd\\VectorLite\\Database\\Factories\\'.class_basename($model).'Factory'
         );
@@ -49,13 +38,11 @@ class TestCase extends Orchestra
      */
     protected function getEnvironmentSetUp($app)
     {
-        // Use the sqlite file, not :memory:
         $app['config']->set('database.default', 'sqlite');
         $app['config']->set('database.connections.sqlite', [
             'driver' => 'sqlite',
             'database' => database_path('testing.sqlite'),
             'prefix' => '',
-            // you can enable foreign key constraints if you like
             'foreign_key_constraints' => true,
         ]);
         $app['config']->set('database.migrations', []);
@@ -66,7 +53,6 @@ class TestCase extends Orchestra
         $app['config']->set('vector-lite.clustering_dimensions', 6);
         $app['config']->set('vector-lite.clusters_size', 10);
 
-        // If you have a .env in the package root, load it here:
         if (file_exists(__DIR__.'/../.env')) {
             Dotenv::createImmutable(__DIR__.'/../')->load();
         }
@@ -105,8 +91,7 @@ class TestCase extends Orchestra
             $table->integer("{$tableName}_count")->default(0);
             $table->timestamps();
         });
-        // $columns = DB::getSchemaBuilder()->getColumnListing($clusterTableName);
-        // dump($columns);
+
         Schema::table($tableName, function (Blueprint $table) use ($clusterTableName, $foreignColumn) {
             $table->foreignId($foreignColumn.'_id')
                 ->nullable()
@@ -118,40 +103,4 @@ class TestCase extends Orchestra
                 ->after($foreignColumn.'_id');
         });
     }
-
-    /*
-    public function setUpDatabase(): void
-    {
-        Schema::dropIfExists('vectors');
-        Schema::dropIfExists('vectors_clusters');
-        Schema::create('vectors', function (Blueprint $table) {
-            $table->id();
-            $table->vectorLite('vector');
-            $table->timestamps();
-        });
-
-        Artisan::call('vector-lite:cluster', ['table' => 'vectors']);
-        Artisan::call('vector-lite:make:cluster', [
-            'table' => 'vectors',
-        ]);
-
-
-        /*
-        Schema::dropIfExists('vectors');
-        Schema::create('vectors', function (Blueprint $table) {
-            $table->id();
-            // $table->integer('chunk')->index();
-            $table->vectorLite('vector');
-
-            // $table->vectorLite('vector_raw');
-            // $table->vectorLite('vector_normalized');
-            // $table->vectorLite('vector_packed');
-            $table->timestamps();
-        });
-        Schema::create('vectors_clusters', function (Blueprint $table) {
-            $table->id();
-            $table->vectorLite('vector');
-            $table->timestamps();
-        })
-    */
 }
