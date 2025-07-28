@@ -5,8 +5,6 @@ namespace ThaKladd\VectorLite\Tests;
 use Dotenv\Dotenv;
 use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Database\Schema\Blueprint;
-use Illuminate\Support\Facades\Artisan;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use Orchestra\Testbench\TestCase as Orchestra;

@@ -1,6 +1,5 @@
 <?php
 
-use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use ThaKladd\VectorLite\Enums\ReduceBy;
 use ThaKladd\VectorLite\Models\VectorModel;
