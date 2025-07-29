@@ -79,7 +79,7 @@ return new class extends Migration {
     }
 };
 STUB;
-        $stub = str_replace('{{$model}}', $model, $stub);
+        $stub = str_replace('{{$model}}', $table, $stub);
         $this->files->put($migrationFile, $stub);
         $this->info("Created migration: {$migrationFile}");
     }
