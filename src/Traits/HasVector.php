@@ -218,12 +218,17 @@ trait HasVector
      */
     public function setVectorAttribute(array $vector): void
     {
+        $vectorColumn = self::vectorColumn();
         // Pack array of floats into binary format
         // If not an array, assume it's already binary or handle error
-        [$binaryVector, $norm] = VectorLite::normalizeToBinary($vector);
-        $this->attributes[self::vectorColumn()] = $binaryVector;
-        $this->attributes[self::vectorColumn().'_norm'] = $norm;
-        $this->attributes[self::vectorColumn().'_hash'] = VectorLite::hashVectorBlob($binaryVector);
+        [$normalizedVector, $norm] = VectorLite::normalize($vector);
+        $binaryVector = VectorLite::normalToBinary($normalizedVector);
+        $binaryVectorHash = VectorLite::hashVectorBlob($binaryVector);
+
+        VectorLite::$cache[$binaryVectorHash] = $normalizedVector;
+        $this->attributes[$vectorColumn] = $binaryVector;
+        $this->attributes[$vectorColumn.'_norm'] = $norm;
+        $this->attributes[$vectorColumn.'_hash'] = $binaryVectorHash;
 
         if (config('vector-lite.use_clustering_dimensions', false)) {
             // Reduce the vector if it is bigger than the smaller dimension size
@@ -231,11 +236,16 @@ trait HasVector
             $reduceDimensions = config('vector-lite.clustering_dimensions');
             $reducedBinaryVector = $reducedNorm = $reducedVector = null;
             if ($reduceDimensions < count($vector)) {
+                $vectorColumnSmall = $vectorColumn.'_small';
                 $reducedVector = $reduceByMethod->reduceVector($vector, $reduceDimensions);
-                [$reducedBinaryVector, $reducedNorm] = VectorLite::normalizeToBinary($reducedVector);
-                $this->attributes[self::vectorColumn().'_small'] = $reducedBinaryVector;
-                $this->attributes[self::vectorColumn().'_small_norm'] = $reducedNorm;
-                $this->attributes[self::vectorColumn().'_small_hash'] = VectorLite::hashVectorBlob($reducedBinaryVector);
+                [$normalizedReducedVector, $reducedNorm] = VectorLite::normalize($reducedVector);
+                $reducedBinaryVector = VectorLite::normalToBinary($normalizedReducedVector);
+                $reducedBinaryVectorHash = VectorLite::hashVectorBlob($reducedBinaryVector);
+
+                VectorLite::$cache[$reducedBinaryVectorHash] = $normalizedReducedVector;
+                $this->attributes[$vectorColumnSmall] = $reducedBinaryVector;
+                $this->attributes[$vectorColumnSmall.'_norm'] = $reducedNorm;
+                $this->attributes[$vectorColumnSmall.'_hash'] = $reducedBinaryVectorHash;
             }
         }
     }

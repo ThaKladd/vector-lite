@@ -6,6 +6,7 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use ThaKladd\VectorLite\Models\VectorModel;
+use ThaKladd\VectorLite\Support\VectorLiteConfig;
 
 class VectorLite
 {
@@ -17,7 +18,7 @@ class VectorLite
 
     protected string $matchColumn = '';
 
-    protected string $maxClusterSize = '';
+    protected int $maxClusterSize = 500;
 
     protected string $countColumn = '';
 
@@ -32,10 +33,10 @@ class VectorLite
     public static array $clusterCache = [];
 
     // Cache the unpacked vectors in a static variable - so it does not need to be unpacked each time
-    private static $cache = [];
+    public static $cache = [];
 
     // Cache of the dot products of all vectors calculated
-    private static $dot = [];
+    public static $dot = [];
 
     // Save the driver and cache time
     private static $driver = null;
@@ -50,32 +51,36 @@ class VectorLite
 
     private static bool $initialized = false;
 
+    private array $vectorCache = [];
+
     private static function init(): void
     {
         if (self::$initialized) {
             return;
         }
 
-        self::$driver = config('vector-lite.cache_driver');
-        self::$cacheTime = config('vector-lite.cache_time');
+        $config = VectorLiteConfig::getInstance();
+        self::$driver = $config->cacheDriver;
+        self::$cacheTime = $config->cacheTime;
         self::$dot = Cache::get(self::$driver)?->get('vector-lite-cache', []);
-        self::$useClusteringDimensions = config('vector-lite.use_clustering_dimensions', false);
-        self::$dimensions = config('vector-lite.clustering_dimensions');
-        self::$reduceByMethod = config('vector-lite.reduction_method');
+        self::$useClusteringDimensions = $config->useClusteringDimensions;
+        self::$dimensions = $config->clusteringDimensions;
+        self::$reduceByMethod = $config->reductionMethod;
         self::$initialized = true;
     }
 
     public function __construct(?VectorModel $model = null)
     {
         if ($model) {
+            $config = VectorLiteConfig::getInstance();
             $this->clusterTable = $model->getClusterTableName();
             $this->clusterForeignKey = Str::singular($this->clusterTable).'_id';
             $this->matchColumn = Str::singular($this->clusterTable).'_match';
             $this->clusterModelName = $model->getClusterModelName();
             $this->modelClass = get_class($model);
-            $this->maxClusterSize = config('vector-lite.clusters_size', 500);
+            $this->maxClusterSize = $config->maxClusterSize;
             $this->modelTable = $model->getTable();
-            $this->useSmallVector = config('vector-lite.use_clustering_dimensions', false);
+            $this->useSmallVector = $config->useClusteringDimensions;
 
             // e.g., if your model table is "vectors", this might be "vectors_count"
             $this->countColumn = $model->getTable().'_count';
@@ -101,16 +106,16 @@ class VectorLite
         // Delete the model from the old cluster
         $oldClusterId = $model->{$this->clusterForeignKey};
         if ($oldClusterId) {
-            /* @var class-string<\ThaKladd\VectorLite\Models\VectorModel> $this->clusterModelName */
-            $oldCluster = $this->clusterModelName::find($oldClusterId);
-            if ($oldCluster) {
-                $oldCluster->decrement($this->countColumn);
-                $oldCluster->save();
-            }
-            // Remove the cluster id from the model
-            $model->{$this->clusterForeignKey} = null;
-            $model->{$this->matchColumn} = null;
-            $model->save();
+            DB::table($this->clusterTable)
+                ->where('id', $oldClusterId)
+                ->decrement($this->countColumn);
+
+            DB::table($this->modelTable)
+                ->where('id', $model->getKey())
+                ->update([
+                    $this->clusterForeignKey => null,
+                    $this->matchColumn => null,
+                ]);
 
             // Recalculate the cluster as new vector is created
             $this->processCreated($model);
@@ -120,25 +125,17 @@ class VectorLite
 
     public function processCreated(VectorModel $model): void
     {
+        if ($model->{$this->clusterForeignKey}) {
+            return;
+        }
+
         // This is called when a model is created - meaning,
         // it has an id and won't trigger again when updated
         DB::statement('PRAGMA journal_mode = WAL');
         DB::transaction(function () use ($model) {
             // Find the closest cluster by cosine similarity to the model’s vector.
-            $clusterModelName = $this->clusterModelName;
-
             $smallVector = ($this->useSmallVector ? '_small' : '');
-            $vectorColumn = $this->clusterTable.'.vector'.$smallVector;
-            $modelVectorColumn = $model::vectorColumn().$smallVector;
-            $modelVector = $model->$modelVectorColumn;
-            $modelVectorHash = $model->{$modelVectorColumn.'_hash'};
-
-            /* @var class-string<\ThaKladd\VectorLite\Models\VectorModel> $clusterModelName */
-            $bestCluster = $clusterModelName::selectRaw(
-                "{$this->clusterTable}.id, {$this->clusterTable}.{$this->countColumn}, COSIM_CACHE({$model->getVectorHashColumn(new $clusterModelName)}, {$vectorColumn}, ?, ?) as similarity",
-                [$modelVectorHash, $modelVector]
-            )->orderBy('similarity', 'desc')->first();
-
+            $bestCluster = $this->findBestCluster($model, $smallVector);
             if ($bestCluster) {
                 $this->clusterClass = get_class($bestCluster);
 
@@ -166,32 +163,90 @@ class VectorLite
         });
     }
 
-    protected function createNewCluster(VectorModel $model): object
+    private function findBestCluster(VectorModel $model, string $smallVector): ?object
     {
         $clusterModelName = $this->clusterModelName;
-        $modelVector = $model->{$model::vectorColumn()};
-        $modelVectorHash = $model->{$model::vectorColumn().'_hash'};
-        $modelVectorNorm = $model->{$model::vectorColumn().'_norm'};
+        $vectorColumn = $this->clusterTable.'.vector'.$smallVector;
+        $modelVectorColumn = $model::vectorColumn().$smallVector;
+
+        $modelVectorHash = $this->getCachedVector($model, $modelVectorColumn.'_hash');
+        $modelVector = $this->getCachedVector($model, $modelVectorColumn);
+
+        /* @var class-string<\ThaKladd\VectorLite\Models\VectorModel> $clusterModelName */
+        return $clusterModelName::selectRaw(
+            "{$this->clusterTable}.id, {$this->clusterTable}.{$this->countColumn}, COSIM_CACHE({$model->getVectorHashColumn(new $clusterModelName)}, {$vectorColumn}, ?, ?) as similarity",
+            [$modelVectorHash, $modelVector]
+        )
+            ->where($this->countColumn, '<', $this->maxClusterSize)
+            ->orderBy('similarity', 'desc')
+            ->first();
+    }
+
+    private function findBestClusterForModel($model, string $smallVector, $fullCluster): object
+    {
+        $modelVectorColumn = $model::vectorColumn().$smallVector;
+        $clusterVectorColumn = $this->clusterTable.'.vector'.$smallVector;
+
+        // Use cached or direct access since we selected these columns
+        $modelVectorHash = $model->{$modelVectorColumn.'_hash'};
+        $modelVector = $model->$modelVectorColumn;
+
+        /** @var class-string<\ThaKladd\VectorLite\Models\VectorModel> $clusterClassName */
+        $clusterClassName = $this->clusterClass;
+
+        return $clusterClassName::selectRaw(
+            "{$this->clusterTable}.id, {$this->clusterTable}.{$this->countColumn}, COSIM_CACHE({$fullCluster->getVectorHashColumn(null)}, {$clusterVectorColumn}, ?, ?) as similarity",
+            [$modelVectorHash, $modelVector]
+        )->orderBy('similarity', 'desc')->first();
+    }
+
+    private function getCachedVector(VectorModel $model, string $column): string
+    {
+        $key = $model->getKey().'_'.$column;
+
+        if (! isset($this->vectorCache[$key])) {
+            $this->vectorCache[$key] = $model->$column;
+        }
+
+        return $this->vectorCache[$key];
+    }
+
+    private function batchUpdateModels(array $updates): void
+    {
+        foreach ($updates as $update) {
+            DB::table($this->modelTable)
+                ->where('id', $update['id'])
+                ->update([
+                    $this->clusterForeignKey => $update['cluster_id'],
+                    $this->matchColumn => $update['similarity'],
+                ]);
+        }
+    }
+
+    protected function createNewCluster(VectorModel $model): object
+    {
+        $vectorColumn = $model::vectorColumn();
+        $clusterModelName = $this->clusterModelName;
+        $attributes = [
+            $vectorColumn => $this->getCachedVector($model, $vectorColumn),
+            $vectorColumn.'_hash' => $this->getCachedVector($model, $vectorColumn.'_hash'),
+            $vectorColumn.'_norm' => $this->getCachedVector($model, $vectorColumn.'_norm'),
+        ];
 
         $smallVectors = [];
         if ($this->useSmallVector) {
-            $modelVectorSmall = $model->{$model::vectorColumn().'_small'};
-            $modelVectorSmallHash = $model->{$model::vectorColumn().'_small_hash'};
-            $modelVectorSmallNorm = $model->{$model::vectorColumn().'_small_norm'};
-
+            $smallCol = $vectorColumn.'_small';
             $smallVectors = [
-                $model::vectorColumn().'_small' => $modelVectorSmall,
-                $model::vectorColumn().'_small_hash' => $modelVectorSmallHash,
-                $model::vectorColumn().'_small_norm' => $modelVectorSmallNorm,
+                $smallCol => $this->getCachedVector($model, $smallCol),
+                $smallCol.'_hash' => $this->getCachedVector($model, $smallCol.'_hash'),
+                $smallCol.'_norm' => $this->getCachedVector($model, $smallCol.'_norm'),
             ];
         }
 
         /* @var class-string<VectorModel> $clusterModelName */
         $clusterModel = new $clusterModelName;
         $clusterModel->setRawAttributes([
-            $model::vectorColumn() => $modelVector,
-            $model::vectorColumn().'_hash' => $modelVectorHash,
-            $model::vectorColumn().'_norm' => $modelVectorNorm,
+            ...$attributes,
             ...$smallVectors,
             $this->countColumn => 1,
         ]);
@@ -217,9 +272,17 @@ class VectorLite
 
         // Get all models in the cluster, sorted by lowest similarity first.
         $modelClassName = $this->modelClass;
+        $vectorColumn = $modelClassName::vectorColumn();
+        $smallVector = ($this->useSmallVector ? '_small' : '');
 
         /** @var class-string<\ThaKladd\VectorLite\Models\VectorModel> $modelClassName */
         $clusterVectors = $modelClassName::query()
+            ->select([
+                'id',
+                $this->matchColumn,
+                $vectorColumn.$smallVector,
+                $vectorColumn.$smallVector.'_hash',
+            ])
             ->where($this->clusterForeignKey, $fullCluster->id)
             ->orderBy($this->matchColumn)
             ->get();
@@ -231,23 +294,13 @@ class VectorLite
         $this->cacheClusterOperation($fullCluster, -1);
         $this->updateModelWithCluster($leastSimilarModel, $newCluster, 1.0);
 
-        $smallVector = ($this->useSmallVector ? '_small' : '');
-        $clusterVectorColumn = $this->clusterTable.'.vector'.$smallVector;
-        $modelVectorColumn = ($leastSimilarModel::vectorColumn()).$smallVector;
+        $updates = [];
 
         // Iterate through the rest of the models in the cluster.
         /** @var \ThaKladd\VectorLite\Models\VectorModel $leastMatchModel */
         foreach ($clusterVectors as $leastMatchModel) {
-            $modelVectorHash = $leastMatchModel->{$modelVectorColumn.'_hash'};
-            $modelVector = $leastMatchModel->$modelVectorColumn;
-
             // For each model in the cluster, find the best matching cluster.
-            /** @var class-string<\ThaKladd\VectorLite\Models\VectorModel> $clusterClassName */
-            $clusterClassName = $this->clusterClass;
-            $bestCluster = $clusterClassName::selectRaw(
-                "{$this->clusterTable}.id, {$this->clusterTable}.{$this->countColumn}, COSIM_CACHE({$fullCluster->getVectorHashColumn(null)}, {$clusterVectorColumn}, ?, ?) as similarity",
-                [$modelVectorHash, $modelVector]
-            )->orderBy('similarity', 'desc')->first();
+            $bestCluster = $this->findBestClusterForModel($leastMatchModel, $smallVector, $fullCluster);
 
             /** @var \ThaKladd\VectorLite\Models\VectorModel $bestCluster */
             // Round to 14 decimals because of what database column can hold
@@ -259,9 +312,19 @@ class VectorLite
                 break;
             }
 
+            $idColumn = $leastMatchModel->getKey();
+            $updates[] = [
+                'id' => $leastMatchModel->$idColumn,
+                'cluster_id' => $bestCluster->$idColumn,
+                'similarity' => $bestCluster->similarity,
+            ];
+
             $this->cacheClusterOperation($fullCluster, -1);
-            $this->updateModelWithCluster($leastMatchModel, $bestCluster, $bestCluster->similarity);
             $this->cacheClusterOperation($bestCluster, 1);
+        }
+
+        if (! empty($updates)) {
+            $this->batchUpdateModels($updates);
         }
     }
 
@@ -331,7 +394,15 @@ class VectorLite
     {
         [$normalVector, $norm] = self::normalize($vector);
 
-        return [pack('f*', ...$normalVector), $norm];
+        return [self::normalToBinary($normalVector), $norm];
+    }
+
+    /**
+     * Normalized vector to binary.
+     */
+    public static function normalToBinary(array $normalVector): string
+    {
+        return pack('f*', ...$normalVector);
     }
 
     /**
@@ -427,11 +498,13 @@ class VectorLite
             // Reduce the vector if it is bigger than the smaller dimension size
             if (self::$dimensions < count($vectorToReduce)) {
                 $reducedVector = self::$reduceByMethod->reduceVector($vectorToReduce, self::$dimensions);
-
-                [$smallBinaryVector, $norm] = self::normalizeToBinary($reducedVector);
+                [$smallNormalizedVector, $norm] = self::normalize($reducedVector);
+                $smallBinaryVector = self::normalToBinary($smallNormalizedVector);
+                $smallBinaryVectorHash = self::hashVectorBlob($smallBinaryVector);
+                self::$cache[$smallBinaryVectorHash] = $smallNormalizedVector;
                 $model->update([
                     $vectorColumnSmall => $smallBinaryVector,
-                    $vectorColumnSmall.'_hash' => self::hashVectorBlob($smallBinaryVector),
+                    $vectorColumnSmall.'_hash' => $smallBinaryVectorHash,
                     $vectorColumnSmall.'_norm' => $norm,
                 ]);
 
@@ -473,11 +546,11 @@ class VectorLite
 
         // Cache the unpacked vectors for the current session
         if (! isset(self::$cache[$queryId])) {
-            self::$cache[$queryId] = unpack('f*', $binaryQueryVector);
+            self::$cache[$queryId] = self::binaryVectorToArray($binaryQueryVector);
         }
 
         if (! isset(self::$cache[$targetId])) {
-            self::$cache[$targetId] = unpack('f*', $binaryTargetVector);
+            self::$cache[$targetId] = self::binaryVectorToArray($binaryTargetVector);
         }
 
         self::$dot[$targetId][$queryId] = $dotProduct = self::dotProduct(self::$cache[$queryId], self::$cache[$targetId]);
@@ -605,8 +678,8 @@ class VectorLite
         $amount = count($vectorA);
 
         $dotProduct = 0.0;
-        for ($i = 1; $i <= $amount; $i++) {
-            $dotProduct += $vectorA[$i] * $vectorB[$i];
+        foreach ($vectorA as $i => $vector) {
+            $dotProduct += $vector * $vectorB[$i];
         }
 
         return $dotProduct;
