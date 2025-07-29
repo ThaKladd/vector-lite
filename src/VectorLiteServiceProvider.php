@@ -8,6 +8,7 @@ use Spatie\LaravelPackageTools\Package;
 use Spatie\LaravelPackageTools\PackageServiceProvider;
 use ThaKladd\VectorLite\Commands\MakeVectorLiteClusterCommand;
 use ThaKladd\VectorLite\Commands\VectorLiteClusterCommand;
+use ThaKladd\VectorLite\Commands\VectorLiteMakeCommand;
 
 class VectorLiteServiceProvider extends PackageServiceProvider
 {
@@ -87,6 +88,7 @@ class VectorLiteServiceProvider extends PackageServiceProvider
     {
         $this->mergeConfigFrom(__DIR__.'/../config/vector-lite.php', 'vector-lite');
         $this->commands([
+            VectorLiteMakeCommand::class,
             VectorLiteClusterCommand::class,
             MakeVectorLiteClusterCommand::class,
         ]);
