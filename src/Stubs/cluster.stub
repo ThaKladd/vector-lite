@@ -4,6 +4,7 @@ namespace DummyNamespace;
 
 use ThaKladd\VectorLite\Traits\HasVector;
 use Illuminate\Database\Eloquent\Model;
+use ThaKladd\VectorLite\Models\VectorModel;
 
 class DummyClass extends VectorModel
 {
