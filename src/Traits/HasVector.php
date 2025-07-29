@@ -295,9 +295,9 @@ trait HasVector
     /**
      * Find the best match for the vector on the current object
      */
-    public function findBestVectorMatch(): Collection
+    public function findBestVectorMatch(): ?VectorModel
     {
-        return static::query()->withoutModels($this)->bestByVector($this, 1)->get();
+        return static::query()->withoutModels($this)->bestByVector($this, 1)->first();
     }
 
     /**

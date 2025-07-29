@@ -33,34 +33,19 @@ Using a dedicated vector database like Pinecone and Milvus adds the extra latenc
 
 With VectorLite you can get the power of vectors within your existing SQLite database and use it within your SQL queries.
 
-### Comparison with other vector databases
+## Requirements
 
-Using a solution like this is in theory much slower, especially on big sets of vectors, but if done correctly, it can be fast enough for your needs. I benchmarked and tested with Pinecone, and the results are interesting.
+-   PHP 8.4+
+-   Laravel 12.0+
 
--   Pinecone has a near O(1) search time, so it is much faster when vectors grow over about 800, but you need to connect to their api and pay for the service.
--   VectorLite becomes slower as the amount of vectors grown, but faster if you stay below 800 vectors - and it should work well with most projects where you limit the amount within a query anyway.
--   Adding clustering can speed up the search time drastically and keep up to par with Pinecone up to about 20000 vectors.
--   There is a network overhead for Pinecone that does not exist for VectorLite.
--   With a few tricks, VectorLite improved speeds to be 1/4 of the speeds from the original article before applying clustering.
+## Usage
 
-Numbers in seconds for search time, with vector size of 1536 and when clustered, then cluster size on 500:
+When everything is set up as shown below, then this is how it can be used:
 
-| Vectors | Pinecone | VectorLite | VectorLite w/cache | VectorLite w/cluster | VectorLite w/cluster&cache |
-| ------- | -------- | ---------- | ------------------ | -------------------- | -------------------------- |
-| 100     | 0.0689   | 0.0246     | 0.0087             | **0.0074**           | 0.0075                     |
-| 1000    | 0.0676   | 0.0833     | 0.0929             | 0.015                | **0.0022**                 |
-| 10000   | 0.0686   | 0.9353     | 0.7834             | 0.0332               | **0.0251**                 |
-| 100000  | 0.0751   | 8.3062     | 9.8218             | N/A                  | N/A                        |
-
-N/A means that I did not test it because the insertion of the vectors took too long. Because of clustering every sigle model with a vector needs to be saved alone, and not in a batch.
-
-Note on cache: If I ran the same queries twice, where I do 1000 queries - the second round will take 0.004 seconds instead of 0.0929. So the idea with cache is if you do many of the same query on the same session.
-
-#### Insert speed
-
-When using clusters, inserting 100 is quite quick (0.0719 seconds). Inserting 1000 is still ok (0.6752 seconds), but when inserting 10000 time begins to slow down drastically (39.5224 seconds).
-
-This is because in order to trigger the cluster algorithm, the object needs to be created with Laravel amd cannot be done in batches.
+```php
+$movie = Movie::find(123);
+$similarMovies = $movie->getBestVectorMatches(3);
+```
 
 ## How to start
 
@@ -99,13 +84,21 @@ This is the contents of the published config file:
 
 ```php
 return [
+    'similarity_alias' => 'similarity',
+    'vector_column' => 'vector',
+    'embed_hash_column' => 'embed_hash',
     'openai' => [
         'api_key' => env('OPENAI_API_KEY'),
     ],
+    'default_dimensions' => 1536,
+    'use_clustering_dimensions' => true,
+    'reduction_method' => \ThaKladd\VectorLite\Enums\ReduceBy::RPM,
+    'clustering_dimensions' => 64,
     'clusters_size' => 500,
     'use_cached_cosim' => true,
     'cache_driver' => env('CACHE_DRIVER', false),
     'cache_time' => 60 * 60 * 24,
+    'exclude_self_by_default' => false,
 ];
 ```
 
@@ -115,10 +108,10 @@ Take a look at the config file for further comments.
 
 There are two things you need to do in order to set up the use of Vectors in your project.
 
-### 1. Add HasVector trait to your model
+### 1. Extend your model with the VectorModel instead of Model. Everything from model is still there.
 
 ```php
-use ThaKladd\VectorLite\Traits\HasVector;
+class MyModel extends VectorModel {}
 ```
 
 ### 2. Run the artisan command
@@ -133,10 +126,11 @@ This will prompt you for the model, create the migration, and run the migration 
 
 It will also ask you if you want to use clustering, and it will run the clustering command for you as well as prompt for running migration again.
 
-In practice, it will add a `'vector'` and `'vector_hash'` column to your model,
-and with added clustering it will make a new table `'model_clusters'` as well as append your model table with `'model_cluster_id'` and `'model_cluster_match'` columns.
+In practice, it will add `'vector'`, `'vector_hash'`, `'vector_norm'` columns to your model, together with the `'_small'` variants. With added clustering it will make a new table `'model_clusters'` as well as append your model table with `'model_cluster_id'` and `'model_cluster_match'` columns. For embeddings there will be a `'embed_hash'` as well to keep track of changes in the data.
 
 ## Methods
+
+There is a new attribute you can add to your model `protected $embedFields = ['title', 'other.description'];` that is used to define what fields the data of the vector consists of.
 
 ### Provided by trait
 
@@ -144,21 +138,51 @@ The HasVector trait adds both methods and some other functionality to your model
 
 Note: The model may be slower to save, as it needs to get the embedding and calculate the cluster for the vector. But don't worry, it will only recalculate cluster when the vector is changed.
 
+The most important is the setting of the vector attribute. Whatever your columns are named, user the `$model->vector` to set a vector created by an embedding ai model. If you have set up `$embedFields` and a openai key, this should work automatically and there is no need to set the vector. If a similarity is calculated, you can access it with `$model->similarity`.
+
+There is also a method called `$model->createEmbedding($text, 1536)` for creating the embedding.
+
+In addition, if you have made a cluster then you get it with the `$model->cluster` relationship, unless you make your own. Also, in order to find the best clusters `$model->getBestClusters(3)`.
+
+On the model you also have two methods to get matching vectors `$model->findBestByVector()` and `$model->searchBestByVector(3)`.
+
 #### Scopes
 
 ```php
 $modelQuery = YourModel::query();
+$modelQuery->filterByClosestClusters(3);
+$modelQuery->getBestClustersByVector($vector, 3);
+$modelQuery->findBestClustersByVector($vector);
 $modelQuery->selectSimilarity($vector);
+$modelQuery->findBestByVector($vector);
+$modelQuery->searchBestByVector($vector, 3);
 $modelQuery->whereVector($vector, '>=', 0.8);
 $modelQuery->whereVectorBetween($vector, 0.5, 0.9);
-$modelQuery->havingVector($vector, '>=', 0.8);
+$modelQuery->havingSimilarity($vector, '>=', 0.8);
 $modelQuery->orderBySimilarity($vector, 'desc');
+$modelQuery->withoutModels([$vector, $vector2]);
+$modelQuery->includeModels([$vector, $vector2]);
+$modelQuery->orIncludeModels([$vector, $vector2]);
 $modelQuery->withoutSelf();
+$modelQuery->includeSelf();
+```
+
+Similarly, the Vector models when fetched, go into a collection, and to it there are added a few methods as well.
+
+```php
+$all = YourModel::all();
+$all->searchBestByVector($vector, 3);
+$all->sortBySimilarityToVector($vector, 'asc');
+$all->filterAboveSimilarityThreshold($vector, 0.5);
+$all->pluckSimilarities($vector);
+$all->withSimilarities($vector);
+$all->findBestByVector($vector);
 ```
 
 ### Provided by class
 
-The VectorLite class provides the following useful methods:
+The VectorLite class provides useful methods for calculating dot products and normalizing vectors etc.
+All of them are used within VectorLite but is also available to use.
 
 ```php
 use ThaKladd\VectorLite\VectorLite;
@@ -183,6 +207,37 @@ For using PHPStan:
 ```bash
 ddev exec vendor/bin/phpstan
 ```
+
+## Comparison with other vector databases
+
+**OBS!** The numbers here are from an early proof of concept version, and are inaccurate. I include them here just in order to set an expectation of what it can do. The real numbers should be better than this.
+
+Using a solution like this is in theory much slower, especially on big sets of vectors, but if done correctly, it can be fast enough for your needs. I benchmarked and tested with Pinecone, and the results are interesting.
+
+-   Pinecone has a near O(1) search time, so it is much faster when vectors grow over about 800, but you need to connect to their api and pay for the service.
+-   VectorLite becomes slower as the amount of vectors grown, but faster if you stay below 800 vectors - and it should work well with most projects where you limit the amount within a query anyway.
+-   Adding clustering can speed up the search time drastically and keep up to par with Pinecone up to about 20000 vectors.
+-   There is a network overhead for Pinecone that does not exist for VectorLite.
+-   With a few tricks, VectorLite improved speeds to be 1/4 of the speeds from the original article before applying clustering.
+
+Numbers in seconds for search time, with vector size of 1536 and when clustered, then cluster size on 500:
+
+| Vectors | Pinecone | VectorLite | VectorLite w/cache | VectorLite w/cluster | VectorLite w/cluster&cache |
+| ------- | -------- | ---------- | ------------------ | -------------------- | -------------------------- |
+| 100     | 0.0689   | 0.0246     | 0.0087             | **0.0074**           | 0.0075                     |
+| 1000    | 0.0676   | 0.0833     | 0.0929             | 0.015                | **0.0022**                 |
+| 10000   | 0.0686   | 0.9353     | 0.7834             | 0.0332               | **0.0251**                 |
+| 100000  | 0.0751   | 8.3062     | 9.8218             | N/A                  | N/A                        |
+
+N/A means that I did not test it because the insertion of the vectors took too long. Because of clustering every single model with a vector needs to be saved alone, and not in a batch.
+
+Note on cache: If I ran the same queries twice, where I do 1000 queries - the second round will take 0.004 seconds instead of 0.0929. So the idea with cache is if you do many of the same query on the same session.
+
+### Insert speed
+
+When using clusters, inserting 100 is quite quick (0.0719 seconds). Inserting 1000 is still ok (0.6752 seconds), but when inserting 10000 time begins to slow down drastically (39.5224 seconds initially - but latest version managed to do this in around 10 seconds).
+
+This is because in order to trigger the cluster algorithm, the object needs to be created with Laravel amd cannot be done in batches.
 
 ## Support us
 

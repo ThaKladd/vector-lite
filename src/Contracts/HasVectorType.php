@@ -37,7 +37,7 @@ interface HasVectorType
 
     public function getBestVectorMatches(?int $limit = null): Collection;
 
-    public function findBestVectorMatch(): Collection;
+    public function findBestVectorMatch(): ?VectorModel;
 
     public function getBestClusters(int $amount = 1): Collection;
 }
