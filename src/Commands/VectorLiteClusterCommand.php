@@ -23,9 +23,9 @@ class VectorLiteClusterCommand extends Command
     {
         $timestamp = date('Y_m_d_His');
         $forTableName = $this->argument('table');
-        $modelClass = 'App\\Models\\'.Str::studly($forTableName);
+        $modelClass = 'App\\Models\\'.Str::singular(Str::studly($forTableName));
         $clusterModelClass = $modelClass.'Cluster';
-        $clusterModelTable = Str::snake($forTableName).'_clusters';
+        $clusterModelTable = Str::singular(Str::snake($forTableName)).'_clusters';
 
         $this->info('This will create a new table and model for the cluster.');
         $this->createMigration($forTableName, $clusterModelTable, $timestamp);
@@ -46,6 +46,7 @@ class VectorLiteClusterCommand extends Command
         // Determine migration filename with current timestamp.
         $migrationFile = database_path("migrations/{$timestamp}_create_{$newTable}_table.php");
         $foreignColumn = Str::singular($newTable);
+        $modelTableSingular = Str::singular($modelTable);
 
         // A simple stub for the migration.
         $stub = <<<'STUB'
@@ -61,7 +62,7 @@ return new class extends Migration {
         Schema::create('{{newTable}}', function (Blueprint $table) {
             $table->id();
             $table->vectorLiteCluster('vector');
-            $table->integer('{{modelTable}}_count')->default(0);
+            $table->integer('{{modelTableSingular}}_count')->default(0);
             $table->timestamps();
         });
 
@@ -84,6 +85,7 @@ return new class extends Migration {
 STUB;
 
         $stub = str_replace('{{newTable}}', $newTable, $stub);
+        $stub = str_replace('{{modelTableSingular}}', $modelTableSingular, $stub);
         $stub = str_replace('{{modelTable}}', $modelTable, $stub);
         $stub = str_replace('{{foreignColumn}}', $foreignColumn, $stub);
         $this->files->put($migrationFile, $stub);

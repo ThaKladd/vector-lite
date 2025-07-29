@@ -4,7 +4,7 @@ namespace ThaKladd\VectorLite\Tests\Models;
 
 use ThaKladd\VectorLite\Models\VectorModel;
 
-class VectorsCluster extends VectorModel
+class VectorCluster extends VectorModel
 {
     protected $guarded = [];
 }

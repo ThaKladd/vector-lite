@@ -62,7 +62,7 @@ class TestCase extends Orchestra
     protected function setUpDatabase(): void
     {
         $tableName = 'vectors';
-        $clusterTableName = 'vectors_clusters';
+        $clusterTableName = 'vector_clusters';
 
         Schema::dropIfExists($clusterTableName);
         Schema::dropIfExists($tableName);
@@ -84,9 +84,10 @@ class TestCase extends Orchestra
         $foreignColumn = Str::singular($clusterTableName);
 
         Schema::create($clusterTableName, function (Blueprint $table) use ($tableName) {
+            $tableNameSingular = Str::singular($tableName);
             $table->id();
             $table->vectorLiteCluster('vector');
-            $table->integer("{$tableName}_count")->default(0);
+            $table->integer("{$tableNameSingular}_count")->default(0);
             $table->timestamps();
         });
 

@@ -135,7 +135,7 @@ trait HasVector
      */
     public function getClusterTableName(): string
     {
-        return $this->getTable().'_clusters';
+        return Str::singular($this->getTable()).'_clusters';
     }
 
     /**
@@ -145,7 +145,7 @@ trait HasVector
      */
     public function getClusterModelName(): string
     {
-        return Str::plural(get_class($this)).'Cluster';
+        return get_class($this).'Cluster';
     }
 
     /**

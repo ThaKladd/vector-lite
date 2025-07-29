@@ -82,8 +82,8 @@ class VectorLite
             $this->modelTable = $model->getTable();
             $this->useSmallVector = $config->useClusteringDimensions;
 
-            // e.g., if your model table is "vectors", this might be "vectors_count"
-            $this->countColumn = $model->getTable().'_count';
+            // e.g., if your model table is "vectors", this might be "vector_count"
+            $this->countColumn = Str::singular($model->getTable()).'_count';
         }
     }
 

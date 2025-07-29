@@ -61,12 +61,12 @@ it('can do clustering of vectors', function () {
     $clusterSize = config('vector-lite.clusters_size');
     $clusteringThreshold = $vectorAmount / $clusterSize * 3;
 
-    $this->assertTrue(DB::getSchemaBuilder()->hasTable('vectors_clusters'));
+    $this->assertTrue(DB::getSchemaBuilder()->hasTable('vector_clusters'));
     $this->fillVectorClusterTable($vectorAmount, 36);
     $vectors = DB::table('vectors')->count();
     $this->assertSame($vectors, $vectorAmount);
-    $vectorClusters = DB::table('vectors_clusters')->count();
-    $columns = DB::getSchemaBuilder()->getColumnListing('vectors_clusters');
+    $vectorClusters = DB::table('vector_clusters')->count();
+
     $this->assertTrue($vectorClusters <= $clusteringThreshold);
     $vectorModel = Vector::query()->inRandomOrder()->first();
     $this->assertNotNull($vectorModel);
@@ -74,7 +74,7 @@ it('can do clustering of vectors', function () {
 
     $bestCluster = Vector::findBestClustersByVector($vectorModel->vector);
     $this->assertNotNull($bestCluster);
-    $this->assertTrue($bestCluster->id === $vectorModel->vectors_cluster_id || $bestCluster->similarity > 0.9);
+    $this->assertTrue($bestCluster->id === $vectorModel->vector_cluster_id || $bestCluster->similarity > 0.9);
 
     $similarVector = Vector::findBestByVector($vectorModel->vector);
     $this->assertNotNull($similarVector);
@@ -154,7 +154,7 @@ it('can transform a vector', function () {
 
 it('can use the methods on the collection', function () {
     $vectorAmount = 1000;
-    $this->assertTrue(DB::getSchemaBuilder()->hasTable('vectors_clusters'));
+    $this->assertTrue(DB::getSchemaBuilder()->hasTable('vector_clusters'));
     $this->fillVectorClusterTable($vectorAmount, 36);
     $vectors = DB::table('vectors')->count();
     $this->assertSame($vectors, $vectorAmount);
