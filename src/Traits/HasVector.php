@@ -2,17 +2,19 @@
 
 namespace ThaKladd\VectorLite\Traits;
 
-use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Relations\HasOne;
-use Illuminate\Support\Collection;
-use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
-use ThaKladd\VectorLite\Enums\ReduceBy;
-use ThaKladd\VectorLite\Models\VectorModel;
-use ThaKladd\VectorLite\QueryBuilders\VectorLiteQueryBuilder;
-use ThaKladd\VectorLite\Services\EmbeddingService;
-use ThaKladd\VectorLite\Tests\Models\Vector;
+use Illuminate\Support\Collection;
 use ThaKladd\VectorLite\VectorLite;
+use Illuminate\Support\Facades\Schema;
+use Illuminate\Database\Eloquent\Model;
+use ThaKladd\VectorLite\Enums\ReduceBy;
+use Illuminate\Database\Eloquent\Builder;
+use ThaKladd\VectorLite\Models\VectorModel;
+use ThaKladd\VectorLite\Tests\Models\Vector;
+use ThaKladd\VectorLite\Support\VectorLiteConfig;
+use Illuminate\Database\Eloquent\Relations\HasOne;
+use ThaKladd\VectorLite\Services\EmbeddingService;
+use ThaKladd\VectorLite\QueryBuilders\VectorLiteQueryBuilder;
 
 /**
  * @mixin Model
@@ -105,9 +107,28 @@ trait HasVector
         return config('vector-lite.embed_hash_column', 'embed_hash');
     }
 
-    public function newEloquentBuilder($query): VectorLiteQueryBuilder
+    public function newEloquentBuilder($query): VectorLiteQueryBuilder|Builder
     {
-        return new VectorLiteQueryBuilder($query);
+        $config = VectorLiteConfig::getInstance();
+
+        if ($config->isSqlLite) {
+            return new VectorLiteQueryBuilder($query);
+        }
+
+        return new Builder($query);
+    }
+
+    /**
+     * Gets you the vector query, for better autocompletion
+     * as well as exception if not SqlLite
+     */
+    public function vectorQuery(): VectorLiteQueryBuilder
+    {
+        if (!VectorLiteConfig::getInstance()->isSqlLite) {
+            throw new \RuntimeException('Vector queries only supported on SQLite');
+        }
+
+        return $this->newQuery();
     }
 
     /**
@@ -265,21 +286,23 @@ trait HasVector
     public function createEmbedding(string $text, ?int $dimensions = null): array
     {
         $dimensions = $dimensions ?? config('vector-lite.default_dimensions');
-        $embeddingServiceKey = config('openai.api_key');
-        if ($embeddingServiceKey) {
-            $embeddingService = app(EmbeddingService::class);
-            $embedding = $embeddingService->createEmbedding($text, $dimensions);
-        } else {
-            $embedding = VectorLite::vectorToArray($this->{self::vectorColumn()});
+        $embeddingServiceKey = config('vector-lite.openai.api_key');
+        $embedding =  $reducedEmbedding = null;
+        if($text) {
+            if ($embeddingServiceKey) {
+                $embeddingService = app(EmbeddingService::class);
+                $embedding = $embeddingService->createEmbedding($text, $dimensions);
+            }
+
+            $reducedEmbedding = [];
+            if ($embedding && config('vector-lite.use_clustering_dimensions')) {
+                $dimensions = config('vector-lite.clustering_dimensions');
+                $reduceByMethod = config('vector-lite.reduction_method');
+                $vectorInput = $reduceByMethod === ReduceBy::NEW_EMBEDDING ? $text : $embedding;
+                $reducedEmbedding = $reduceByMethod->reduceVector($vectorInput, $dimensions);
+            }
         }
 
-        $reducedEmbedding = [];
-        if (config('vector-lite.use_clustering_dimensions')) {
-            $dimensions = config('vector-lite.clustering_dimensions');
-            $reduceByMethod = config('vector-lite.reduction_method');
-            $vectorInput = $reduceByMethod === ReduceBy::NEW_EMBEDDING ? $text : $embedding;
-            $reducedEmbedding = $reduceByMethod->reduceVector($vectorInput, $dimensions);
-        }
 
         return [$embedding, $reducedEmbedding];
     }
@@ -289,7 +312,23 @@ trait HasVector
      */
     public function getBestVectorMatches(?int $limit = null): Collection
     {
-        return static::query()->withoutModels($this)->bestByVector($this, $limit)->get();
+        $config = VectorLiteConfig::getInstance();
+        if($config->isSqlLite){
+            return static::query()->withoutModels($this)->bestByVector($this, $limit)->get();
+        }
+
+        $clusterKeys = [];
+        $clusterForeignKey = $this->getClusterForeignKey();
+        if($config->useClusteringDimensions){
+            $amountOfClusters = ceil($limit / $config->maxClusterSize) + 2;
+            $clusterKeys = $this->getBestClusters($amountOfClusters)->pluck('id');
+        }
+
+        return static::query()
+            ->where($this->getKeyName(), '!=', $this->getKey())
+            ->when(!empty($clusterKeys), fn($query) => $query->whereIn($clusterForeignKey, $clusterKeys))
+            ->get()
+            ->searchBestByVector($this, $limit);
     }
 
     /**
@@ -297,7 +336,12 @@ trait HasVector
      */
     public function findBestVectorMatch(): ?VectorModel
     {
-        return static::query()->withoutModels($this)->bestByVector($this, 1)->first();
+        $config = VectorLiteConfig::getInstance();
+        if($config->isSqlLite){
+            return static::query()->withoutModels($this)->bestByVector($this, 1)->first();
+        }
+        $clusterForeignKey = $this->getClusterForeignKey();
+        return static::where($clusterForeignKey, $this->$clusterForeignKey)->get()->except($this->getKey())->searchBestByVector($this, 1)->first();
     }
 
     /**
@@ -310,6 +354,9 @@ trait HasVector
         $small = VectorLite::smallVectorColumn($this);
         $attribute = self::vectorColumn().$small;
 
-        return $clusterClass::searchBestByVector($this->$attribute, $amount);
+        if(VectorLiteConfig::getInstance()->isSqlLite){
+            return $clusterClass::searchBestByVector($this->$attribute, $amount);
+        }
+        return $clusterClass::all()->searchBestByVector($this, $amount);
     }
 }

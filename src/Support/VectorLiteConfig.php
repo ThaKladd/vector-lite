@@ -2,6 +2,8 @@
 
 namespace ThaKladd\VectorLite\Support;
 
+use Illuminate\Support\Facades\DB;
+
 class VectorLiteConfig
 {
     private static ?self $instance = null;
@@ -32,6 +34,8 @@ class VectorLiteConfig
 
     public readonly bool $excludeSelfByDefault;
 
+    public readonly bool $isSqlLite;
+
     private function __construct()
     {
         static $config = null;
@@ -50,6 +54,8 @@ class VectorLiteConfig
         $this->defaultDimensions = $config['default_dimensions'] ?? 1536;
         $this->openaiApiKey = $config['openai']['api_key'] ?? null;
         $this->excludeSelfByDefault = $config['exclude_self_by_default'] ?? false;
+        $this->isSqlLite = false;
+        //$this->isSqlLite = DB::connection()->getDriverName();
     }
 
     public static function getInstance(): self

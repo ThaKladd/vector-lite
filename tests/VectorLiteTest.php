@@ -1,14 +1,15 @@
 <?php
 
 use Illuminate\Support\Facades\DB;
+use ThaKladd\VectorLite\VectorLite;
 use ThaKladd\VectorLite\Enums\ReduceBy;
+use function PHPUnit\Framework\assertTrue;
 use ThaKladd\VectorLite\Models\VectorModel;
-use ThaKladd\VectorLite\Tests\Helpers\VectorTestHelpers;
 use ThaKladd\VectorLite\Tests\Models\Other;
 use ThaKladd\VectorLite\Tests\Models\Vector;
-use ThaKladd\VectorLite\VectorLite;
 
-use function PHPUnit\Framework\assertTrue;
+use ThaKladd\VectorLite\Services\EmbeddingService;
+use ThaKladd\VectorLite\Tests\Helpers\VectorTestHelpers;
 
 ini_set('memory_limit', '20000M');
 
@@ -60,6 +61,12 @@ it('can do clustering of vectors', function () {
     $vectorAmount = 5000; // 5000 should make the clustering have an effect on speed
     $clusterSize = config('vector-lite.clusters_size');
     $clusteringThreshold = $vectorAmount / $clusterSize * 3;
+    $mockEmbeddingService = Mockery::mock(EmbeddingService::class);
+    $mockEmbeddingService
+        ->shouldReceive('createEmbedding')
+        ->with(Mockery::type('string'), Mockery::type('int'))
+        ->andReturn($this->createVectorArray(36));
+    $this->app->instance(EmbeddingService::class, $mockEmbeddingService);
 
     $this->assertTrue(DB::getSchemaBuilder()->hasTable('vector_clusters'));
     $this->fillVectorClusterTable($vectorAmount, 36);
@@ -115,7 +122,7 @@ it('works with object calls', function () {
     $this->assertNotEquals($vectorModel, $similar);
 
     $similarModels = $vectorModel->getBestVectorMatches();
-    $this->assertTrue($similarModels->first()->similarity >= $similarModels->last()->similarity);
+    $this->assertTrue($similarModels->first()?->similarity >= $similarModels->last()?->similarity);
 
 });
 
@@ -153,6 +160,13 @@ it('can transform a vector', function () {
 });
 
 it('can use the methods on the collection', function () {
+    $mockEmbeddingService = Mockery::mock(EmbeddingService::class);
+    $mockEmbeddingService
+        ->shouldReceive('createEmbedding')
+        ->with(Mockery::type('string'), Mockery::type('int'))
+        ->andReturn($this->createVectorArray(36));
+    $this->app->instance(EmbeddingService::class, $mockEmbeddingService);
+
     $vectorAmount = 1000;
     $this->assertTrue(DB::getSchemaBuilder()->hasTable('vector_clusters'));
     $this->fillVectorClusterTable($vectorAmount, 36);
@@ -174,9 +188,15 @@ it('can use the methods on the collection', function () {
     $this->assertTrue(min($similarModels->pluckSimilarities()) >= 0.01);
 });
 
-it('model embedding changes after text change', function () {
+it('changes model embedding after text change', function () {
     $vectorAmount = 50;
     $this->fillVectorTable($vectorAmount, 36);
+    $mockEmbeddingService = Mockery::mock(EmbeddingService::class);
+    $mockEmbeddingService
+        ->shouldReceive('createEmbedding')
+        ->with(Mockery::type('string'), Mockery::type('int'))
+        ->andReturn($this->createVectorArray(36));
+    $this->app->instance(EmbeddingService::class, $mockEmbeddingService);
 
     $vectorModel = Vector::first();
     $vectorModelEmbed = $vectorModel->embed_hash;

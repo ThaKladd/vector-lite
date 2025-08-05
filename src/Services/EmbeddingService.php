@@ -43,7 +43,7 @@ class EmbeddingService
         return json_decode($response->getBody()->getContents(), true)['data'] ?? [];
     }
 
-    public function createEmbedding($text, ?int $dimensions = null): array
+    public function createEmbedding(string $text, ?int $dimensions = null): array
     {
         return $this->createEmbeddings([$text], $dimensions)[0]['embedding'] ?? [];
     }

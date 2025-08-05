@@ -50,6 +50,7 @@ class TestCase extends Orchestra
         $app['config']->set('vector-lite.default_dimensions', 36);
         $app['config']->set('vector-lite.clustering_dimensions', 6);
         $app['config']->set('vector-lite.clusters_size', 10);
+        $app['config']->set('vector-lite.openai.api_key', 1234);
 
         if (file_exists(__DIR__.'/../.env')) {
             Dotenv::createImmutable(__DIR__.'/../')->load();

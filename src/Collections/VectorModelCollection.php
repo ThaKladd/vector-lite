@@ -36,7 +36,7 @@ class VectorModelCollection extends Collection
     /**
      * Search for the best matches with vector
      */
-    public function searchBestByVector(array|string|VectorModel $vector, int $limit = 1): Collection
+    public function searchBestByVector(array|string|VectorModel $vector, ?int $limit = 1): Collection
     {
         $similarityAlias = VectorModel::similarityAlias();
 
@@ -47,7 +47,7 @@ class VectorModelCollection extends Collection
                 return $item;
             })
             ->sortByDesc($similarityAlias)
-            ->take($limit)
+            ->when($limit !== null, fn($collection) => $collection->take($limit))
             ->values();
     }
 
@@ -120,6 +120,16 @@ class VectorModelCollection extends Collection
     public function findBestByVector(array|string|VectorModel $vector): ?Model
     {
         return $this->searchBestByVector($vector, 1)->first();
+    }
+
+    /**
+     * Removes models from the collection if present
+     */
+    public function withoutModels(array|VectorModel $models): self
+    {
+        $modelsArray = is_array($models) ? $models : [$models];
+        $excludeIds = collect($modelsArray)->pluck('id')->toArray();
+        return $this->filter(fn($item) => !in_array($item->id, $excludeIds));
     }
 
     /**

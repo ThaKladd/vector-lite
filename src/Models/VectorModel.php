@@ -80,16 +80,17 @@ abstract class VectorModel extends Model implements HasVectorType
      */
     public function getEmbeddingText(): string
     {
-        $root = strtolower(class_basename($this));
-        $text = "<{$root} id=\"{$this->getKey()}\">\n";
-
+        $fieldsText = '';
         foreach ($this->embedFields as $path) {
-            $text .= $this->resolveEmbedPath($this, $path, 1);
+            $fieldsText .= $this->resolveEmbedPath($this, $path, 1);
         }
 
-        $text .= "</{$root}>\n";
+        if(!empty($fieldsText)) {
+            $root = strtolower(class_basename($this));
+            return "<{$root} id=\"{$this->getKey()}\">\n$fieldsText</{$root}>\n";
+        }
 
-        return $text;
+        return '';
     }
 
     /**
@@ -105,7 +106,7 @@ abstract class VectorModel extends Model implements HasVectorType
         // Attribute
         if (empty($parts)) {
             $value = $model->getAttribute($first);
-            if ($value === null) {
+            if (empty($value)) {
                 return '';
             }
 

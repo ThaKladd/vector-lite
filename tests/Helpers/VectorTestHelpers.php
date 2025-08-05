@@ -60,6 +60,7 @@ trait VectorTestHelpers
 
     private function fillVectorTable(int $amount = 1000, int $dimensions = 1536): void
     {
+        VectorLite::$clusterListCache = null;
         $records = $this->createVectors($amount, $dimensions, true);
         foreach (array_chunk($records, 1000) as $chunk) {
             DB::table('vectors')->insert($chunk);
@@ -68,6 +69,7 @@ trait VectorTestHelpers
 
     private function fillVectorClusterTable(int $amount = 1000, int $dimensions = 1536): void
     {
+        VectorLite::$clusterListCache = null;
         $records = $this->createVectors($amount, $dimensions);
 
         foreach ($records as $record) {
