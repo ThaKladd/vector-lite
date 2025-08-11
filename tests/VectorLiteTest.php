@@ -1,26 +1,46 @@
 <?php
 
 use Illuminate\Support\Facades\DB;
-use ThaKladd\VectorLite\VectorLite;
 use ThaKladd\VectorLite\Enums\ReduceBy;
-use function PHPUnit\Framework\assertTrue;
-use ThaKladd\VectorLite\Models\VectorModel;
+use ThaKladd\VectorLite\Services\EmbeddingService;
+use ThaKladd\VectorLite\Support\ClusterCache;
+use ThaKladd\VectorLite\Support\VectorLiteConfig;
+use ThaKladd\VectorLite\Tests\Helpers\VectorTestHelpers;
 use ThaKladd\VectorLite\Tests\Models\Other;
 use ThaKladd\VectorLite\Tests\Models\Vector;
+use ThaKladd\VectorLite\VectorLite;
 
-use ThaKladd\VectorLite\Services\EmbeddingService;
-use ThaKladd\VectorLite\Tests\Helpers\VectorTestHelpers;
+use function PHPUnit\Framework\assertTrue;
 
 ini_set('memory_limit', '20000M');
 
 uses(VectorTestHelpers::class);
+
+function useMySqlConnection(array $overrides = []): void
+{
+    config()->set('database.connections.mysql', [
+        'driver' => 'mysql',
+        'host' => env('MYSQL_HOST', 'db'),
+        'port' => env('MYSQL_PORT', '3306'),
+        'database' => env('MYSQL_DATABASE', 'db'),
+        'username' => env('MYSQL_USER', 'db'),
+        'password' => env('MYSQL_PASSWORD', 'db'),
+    ]);
+
+    config()->set('database.default', 'mysql');
+
+    DB::purge();
+    DB::reconnect();
+}
 
 it('can connect to database', function () {
     $result = DB::select('SELECT 1 AS test');
     expect($result[0]->test)->toBe(1);
 });
 
-it('can create vector table and use vector methods', function () {
+it('can create vector table and use vector methods - sqlite', function () {
+    VectorLiteConfig::reset();
+    ClusterCache::reset();
     $vectorAmount = 100;
 
     // Check if the table exists
@@ -57,7 +77,46 @@ it('can create vector table and use vector methods', function () {
     $this->assertTrue($bestVectors->first()->similarity > $bestVectors->last()->similarity);
 });
 
-it('can do clustering of vectors', function () {
+it('can create vector table and use vector methods - mysql', function () {
+    VectorLiteConfig::reset();
+    ClusterCache::reset();
+    useMySqlConnection();
+    $this->setUpDatabase();
+
+    // Now run assertions against MySQL
+    expect(DB::connection()->getDatabaseName())->toBe('db');
+    $vectorAmount = 10;
+
+    // Check if the table exists
+    $this->assertTrue(DB::getSchemaBuilder()->hasTable('vectors'));
+
+    // Fill the table with random vectors
+    $this->fillVectorTable($vectorAmount, 36);
+
+    // Check if the vectors are inserted
+    $vectors = DB::table('vectors')->count();
+
+    $this->assertSame($vectors, $vectorAmount);
+
+    $vectorModel = Vector::query()->inRandomOrder()->first();
+
+    $this->assertNotNull($vectorModel);
+    $this->assertNotEmpty($vectorModel->vector);
+
+    $similarVector = $vectorModel->findBestVectorMatch();
+    $this->assertNotNull($similarVector);
+    $this->assertNotEquals($vectorModel->id, $similarVector->id);
+
+    $similarVectors = $vectorModel->getBestVectorMatches(5);
+    $this->assertNotNull($similarVectors);
+    $this->assertEquals($similarVector->id, $similarVectors->first()->id);
+    $this->assertTrue($similarVectors->last()->similarity < $similarVectors->first()->similarity);
+});
+
+it('can do clustering of vectors - sqlite', function () {
+    VectorLiteConfig::reset();
+    ClusterCache::reset();
+
     $vectorAmount = 5000; // 5000 should make the clustering have an effect on speed
     $clusterSize = config('vector-lite.clusters_size');
     $clusteringThreshold = $vectorAmount / $clusterSize * 3;
@@ -70,11 +129,14 @@ it('can do clustering of vectors', function () {
 
     $this->assertTrue(DB::getSchemaBuilder()->hasTable('vector_clusters'));
     $this->fillVectorClusterTable($vectorAmount, 36);
+
     $vectors = DB::table('vectors')->count();
     $this->assertSame($vectors, $vectorAmount);
-    $vectorClusters = DB::table('vector_clusters')->count();
 
+    $vectorClusters = DB::table('vector_clusters')->count();
+    $this->assertTrue($vectorClusters > 2);
     $this->assertTrue($vectorClusters <= $clusteringThreshold);
+
     $vectorModel = Vector::query()->inRandomOrder()->first();
     $this->assertNotNull($vectorModel);
     $this->assertNotEmpty($vectorModel->vector);
@@ -106,7 +168,50 @@ it('can do clustering of vectors', function () {
     $bestVectors = Vector::filterByClosestClusters()->searchBestByVector($vectorModel->vector, 10);
     $limitedSearchTime = round(microtime(true) - $startTime, 6);
     $this->assertTrue($normalSearchTime > $limitedSearchTime);
+});
 
+it('can do clustering of vectors - mysql', function () {
+    VectorLiteConfig::reset();
+    ClusterCache::reset();
+    useMySqlConnection();
+    $this->setUpDatabase();
+    $vectorClusters = DB::table('vector_clusters')->count();
+
+    $vectorAmount = 500;
+    $clusterSize = config('vector-lite.clusters_size');
+    $clusteringThreshold = $vectorAmount / $clusterSize * 3;
+    $mockEmbeddingService = Mockery::mock(EmbeddingService::class);
+    $mockEmbeddingService
+        ->shouldReceive('createEmbedding')
+        ->with(Mockery::type('string'), Mockery::type('int'))
+        ->andReturn($this->createVectorArray(36));
+    $this->app->instance(EmbeddingService::class, $mockEmbeddingService);
+
+    $this->assertTrue(DB::getSchemaBuilder()->hasTable('vector_clusters'));
+    $this->fillVectorClusterTable($vectorAmount, 36);
+
+    $vectors = DB::table('vectors')->count();
+    $this->assertSame($vectors, $vectorAmount);
+
+    $vectorClusters = DB::table('vector_clusters');
+    $vectorClustersCount = $vectorClusters->count();
+    $this->assertTrue($vectorClustersCount > 2);
+    $this->assertTrue($vectorClustersCount <= $clusteringThreshold);
+
+    $vectorModel = Vector::query()->inRandomOrder()->first();
+    $this->assertNotNull($vectorModel);
+    $this->assertNotEmpty($vectorModel->vector);
+
+    $bestCluster = $vectorModel->findBestCluster();
+    $this->assertNotNull($bestCluster);
+    $this->assertTrue($bestCluster->id === $vectorModel->vector_cluster_id || $bestCluster->similarity > 0.9);
+
+    $similarVector = $vectorModel->findBestVectorMatch();
+    $this->assertNotNull($similarVector);
+    $this->assertEquals($vectorModel->vector_cluster_id, $similarVector->vector_cluster_id);
+
+    $bestClusters = $vectorModel->getBestClusters(5);
+    $this->assertTrue($bestClusters->last()->similarity < $bestClusters->first()->similarity);
 });
 
 /**
@@ -115,6 +220,8 @@ it('can do clustering of vectors', function () {
  * $vectorModel->...
  */
 it('works with object calls', function () {
+    VectorLiteConfig::reset();
+    ClusterCache::reset();
     $this->fillVectorTable(100, 36);
     $vectorModel = Vector::query()->inRandomOrder()->first();
 
@@ -123,7 +230,6 @@ it('works with object calls', function () {
 
     $similarModels = $vectorModel->getBestVectorMatches();
     $this->assertTrue($similarModels->first()?->similarity >= $similarModels->last()?->similarity);
-
 });
 
 /**
@@ -131,6 +237,8 @@ it('works with object calls', function () {
  * VectorModel::...
  */
 it('works with static calls', function () {
+    VectorLiteConfig::reset();
+    ClusterCache::reset();
     $this->fillVectorTable(100, 36);
     $vectorModel = Vector::query()->inRandomOrder()->first();
     $similarQuery = Vector::query();
@@ -143,6 +251,8 @@ it('works with static calls', function () {
 });
 
 it('can transform a vector', function () {
+    VectorLiteConfig::reset();
+    ClusterCache::reset();
     $vector = $this->createVectorArray(32);
     [$normalizedVector, $norm] = VectorLite::normalize($vector);
     [$binaryVector, $norm2] = VectorLite::normalizeToBinary($vector);
@@ -160,6 +270,8 @@ it('can transform a vector', function () {
 });
 
 it('can use the methods on the collection', function () {
+    VectorLiteConfig::reset();
+    ClusterCache::reset();
     $mockEmbeddingService = Mockery::mock(EmbeddingService::class);
     $mockEmbeddingService
         ->shouldReceive('createEmbedding')
@@ -189,6 +301,8 @@ it('can use the methods on the collection', function () {
 });
 
 it('changes model embedding after text change', function () {
+    VectorLiteConfig::reset();
+    ClusterCache::reset();
     $vectorAmount = 50;
     $this->fillVectorTable($vectorAmount, 36);
     $mockEmbeddingService = Mockery::mock(EmbeddingService::class);

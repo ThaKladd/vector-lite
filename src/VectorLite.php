@@ -2,14 +2,12 @@
 
 namespace ThaKladd\VectorLite;
 
-use Exception;
-use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use ThaKladd\VectorLite\Models\VectorModel;
+use ThaKladd\VectorLite\Support\ClusterCache;
 use ThaKladd\VectorLite\Support\VectorLiteConfig;
-use ThaKladd\VectorLite\Tests\Models\VectorCluster;
 
 class VectorLite
 {
@@ -58,7 +56,7 @@ class VectorLite
 
     private array $vectorCache = [];
 
-    static ?Collection $clusterListCache = null;
+    public static ?ClusterCache $clusterListCache = null;
 
     private static function init(): void
     {
@@ -69,7 +67,7 @@ class VectorLite
         $config = VectorLiteConfig::getInstance();
         self::$driver = $config->cacheDriver;
         self::$cacheTime = $config->cacheTime;
-        self::$dot = Cache::get(self::$driver)?->get('vector-lite-cache', []);
+        self::$dot = Cache::store(self::$driver)->get('vector-lite-cache', []);
         self::$useClusteringDimensions = $config->useClusteringDimensions;
         self::$dimensions = $config->clusteringDimensions;
         self::$reduceByMethod = $config->reductionMethod;
@@ -82,7 +80,6 @@ class VectorLite
         if ($model) {
             $config = VectorLiteConfig::getInstance();
             self::$isSqlLite = $config->isSqlLite;
-
             $this->clusterTable = $model->getClusterTableName();
             $this->clusterForeignKey = Str::singular($this->clusterTable).'_id';
             $this->matchColumn = Str::singular($this->clusterTable).'_match';
@@ -91,7 +88,11 @@ class VectorLite
             $this->maxClusterSize = $config->maxClusterSize;
             $this->modelTable = $model->getTable();
             $this->smallVector = $config->useClusteringDimensions ? '_small' : '';
-
+            if (! self::$isSqlLite) {
+                self::$clusterListCache = ClusterCache::getInstance(
+                    $this->clusterModelName
+                );
+            }
             // e.g., if your model table is "vectors", this might be "vector_count"
             $this->countColumn = Str::singular($model->getTable()).'_count';
         }
@@ -103,14 +104,14 @@ class VectorLite
         $clusterId = $model->{$this->clusterForeignKey};
         if ($clusterId) {
             /* @var class-string<\ThaKladd\VectorLite\Models\VectorModel> $this->clusterModelName */
-            if(self::$isSqlLite ) {
-                self::$clusterListCache[$clusterId]->decrement($this->countColumn);
-            } else {
+            if (self::$isSqlLite) {
                 $cluster = $this->clusterModelName::find($clusterId);
                 if ($cluster) {
                     $cluster->decrement($this->countColumn);
-                    $cluster->save();
                 }
+            } else {
+                self::$clusterListCache->decrement($clusterId, $this->countColumn, 1);
+                self::$clusterListCache->persist();
             }
         }
     }
@@ -120,12 +121,12 @@ class VectorLite
         // Delete the model from the old cluster
         $oldClusterId = $model->{$this->clusterForeignKey};
         if ($oldClusterId) {
-            if(self::$isSqlLite){
-                self::$clusterListCache[$oldClusterId]->decrement($this->countColumn);
-            } else {
+            if (self::$isSqlLite) {
                 DB::table($this->clusterTable)
                     ->where('id', $oldClusterId)
                     ->decrement($this->countColumn);
+            } else {
+                self::$clusterListCache->decrement($oldClusterId, $this->countColumn, 1);
             }
 
             DB::table($this->modelTable)
@@ -149,7 +150,6 @@ class VectorLite
 
         // This is called when a model is created - meaning,
         // it has an id and won't trigger again when updated
-        DB::statement('PRAGMA journal_mode = WAL');
         DB::transaction(function () use ($model) {
             // Find the closest cluster by cosine similarity to the model’s vector.
             $bestCluster = $this->findBestCluster($model);
@@ -157,7 +157,6 @@ class VectorLite
                 // Add to best cluster because it may be next best match there
                 $this->updateModelWithCluster($model, $bestCluster, $bestCluster->similarity);
                 $this->cacheClusterOperation($bestCluster, 1);
-
                 if ($bestCluster->{$this->countColumn} >= $this->maxClusterSize) {
                     // The cluster is full. Handle full-cluster logic.
                     $this->handleFullCluster($bestCluster);
@@ -168,16 +167,44 @@ class VectorLite
                 $this->updateModelWithCluster($model, $newCluster, 1.0);
             }
 
+            if (! empty(self::$clusterCache)) {
+                if (self::$isSqlLite) {
+                    $ids = array_keys(self::$clusterCache);
+
+                    $caseSql = 'CASE id ';
+                    foreach (self::$clusterCache as $id => $count) {
+                        $caseSql .= "WHEN {$id} THEN {$count} ";
+                    }
+                    $caseSql .= 'END';
+
+                    DB::table($this->clusterTable)
+                        ->whereIn('id', $ids)
+                        ->update([
+                            $this->countColumn => DB::raw("{$this->countColumn} + {$caseSql}"),
+                        ]);
+                } else {
+                    foreach (self::$clusterCache as $clusterId => $count) {
+                        self::$clusterListCache->increment($clusterId, $this->countColumn, $count);
+                    }
+                    self::$clusterListCache->persist();
+                }
+
+                self::$clusterCache = [];
+            }
+            /*
             foreach (self::$clusterCache as $clusterId => $count) {
                 if(self::$isSqlLite){
-                    self::$clusterListCache[$clusterId]->increment($this->countColumn, $count);
-                } else {
                     DB::table($this->clusterTable)
                         ->where('id', $clusterId)
                         ->increment($this->countColumn, $count);
+                } else {
+                    self::$clusterListCache->increment($clusterId, $this->countColumn, $count);
                 }
             }
-            self::$clusterCache = [];
+            if(!self::$isSqlLite){
+                self::$clusterListCache->persist();
+            }
+            self::$clusterCache = [];*/
         });
     }
 
@@ -191,27 +218,16 @@ class VectorLite
         $modelVectorHash = $this->getCachedVector($model, $modelVectorColumn.'_hash');
         $modelVector = $this->getCachedVector($model, $modelVectorColumn);
 
-        if(self::$isSqlLite) {
+        if (self::$isSqlLite) {
             /* @var class-string<\ThaKladd\VectorLite\Models\VectorModel> $clusterModelName */
             return $clusterModelName::selectRaw(
-                    "{$this->clusterTable}.id, {$this->clusterTable}.{$this->countColumn}, COSIM_CACHE({$vectorColumnHash}, {$vectorColumn}, ?, ?) as similarity",
-                    [$modelVectorHash, $modelVector]
-                )
+                "{$this->clusterTable}.id, {$this->clusterTable}.{$this->countColumn}, COSIM_CACHE({$vectorColumnHash}, {$vectorColumn}, ?, ?) as similarity",
+                [$modelVectorHash, $modelVector]
+            )
                 ->orderBy('similarity', 'desc')
                 ->first();
         } else {
-            if (is_null(self::$clusterListCache)) {
-                self::$clusterListCache = $clusterModelName::all()->keyBy('id');
-            }
-
-            $existingIds = self::$clusterListCache->pluck('id');
-            $newClusters = $clusterModelName::whereNotIn('id', $existingIds)->get();
-
-            if ($newClusters->isNotEmpty()) {
-                self::$clusterListCache = self::$clusterListCache->merge($newClusters->keyBy('id'));
-            }
-
-            return self::$clusterListCache->findBestByVector($modelVector);
+            return self::$clusterListCache->fetchAllFromDb()->findBestByVector($modelVector);
         }
     }
 
@@ -219,11 +235,7 @@ class VectorLite
     {
         $key = $model->getKey().'_'.$column;
 
-        if (! isset($this->vectorCache[$key])) {
-            $this->vectorCache[$key] = $model->$column;
-        }
-
-        return $this->vectorCache[$key];
+        return $this->vectorCache[$key] ??= $model->$column;
     }
 
     private function batchUpdateModels(array $updates): void
@@ -269,14 +281,8 @@ class VectorLite
 
         $clusterModel->save();
 
-        if (self::$isSqlLite) {
-            $clusterModelCollection = collect([$clusterModel]);
-            if(self::$clusterListCache) {
-                self::$clusterListCache = self::$clusterListCache->merge($clusterModelCollection);
-            } else {
-                self::$clusterListCache = $clusterModelCollection;
-            }
-            self::$clusterListCache = self::$clusterListCache->keyBy('id');
+        if (! self::$isSqlLite) {
+            self::$clusterListCache->add($clusterModel);
         }
 
         return $clusterModel;
@@ -333,18 +339,17 @@ class VectorLite
 
             /** @var \ThaKladd\VectorLite\Models\VectorModel $bestCluster */
             // Round to 14 decimals because of what database column can hold
-            $bestSimilarity = round($bestCluster->similarity, 14);
-            $leastMatchModelSimilarity = round($leastMatchModel->{$this->matchColumn}, 14);
+            $bestSimilarity = round($bestCluster->similarity, 13);
+            $leastMatchModelSimilarity = round($leastMatchModel->{$this->matchColumn}, 13);
 
             if ($bestSimilarity === $leastMatchModelSimilarity) {
                 // The best is still the current cluster; no re-assignment needed.
                 break;
             }
 
-            $idColumn = $leastMatchModel->getKey();
             $updates[] = [
-                'id' => $leastMatchModel->$idColumn,
-                'cluster_id' => $bestCluster->$idColumn,
+                'id' => $leastMatchModel->getKey(),
+                'cluster_id' => $bestCluster->getKey(),
                 'similarity' => $bestCluster->similarity,
             ];
 
@@ -649,7 +654,7 @@ class VectorLite
         }
 
         $targetVector = self::vectorToBinary($queryVector);
-        $vectorHashColumn = $vectorModel::vectorColumn().'_hash';
+        $vectorHashColumn = $vectorColumn.'_hash';
         $targetHash = self::hashVectorBlob($targetVector);
 
         return self::cosineSimilarityBinaryCache($vectorModel->$vectorHashColumn, $vectorModel->$vectorColumn, $targetHash, $targetVector);

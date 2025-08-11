@@ -41,8 +41,7 @@ class VectorLiteServiceProvider extends PackageServiceProvider
          */
         Blueprint::macro('vectorLite', function (string $column, $length = null, $fixed = false) {
             /** @var Blueprint $this */
-            $this->float('embed_hash')->nullable();
-            /** @phpstan-ignore-next-line */
+            $this->string('embed_hash')->nullable();
             $this->vectorLiteColumns($column, $length, $fixed);
         });
 
@@ -51,7 +50,6 @@ class VectorLiteServiceProvider extends PackageServiceProvider
          */
         Blueprint::macro('vectorLiteCluster', function (string $column, $length = null, $fixed = false) {
             /** @var Blueprint $this */
-            /** @phpstan-ignore-next-line */
             $this->vectorLiteColumns($column, $length, $fixed);
         });
 
@@ -77,7 +75,6 @@ class VectorLiteServiceProvider extends PackageServiceProvider
         Blueprint::macro('dropVectorLite', function (string $column) {
             /** @var Blueprint $this */
             $this->dropColumn('embed_hash');
-            /** @phpstan-ignore-next-line */
             $this->dropVectorLiteColumns($column);
         });
 

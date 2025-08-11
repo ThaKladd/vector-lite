@@ -54,12 +54,17 @@ class VectorLiteConfig
         $this->defaultDimensions = $config['default_dimensions'] ?? 1536;
         $this->openaiApiKey = $config['openai']['api_key'] ?? null;
         $this->excludeSelfByDefault = $config['exclude_self_by_default'] ?? false;
-        $this->isSqlLite = false;
-        //$this->isSqlLite = DB::connection()->getDriverName();
+        // $this->isSqlLite = false;
+        $this->isSqlLite = DB::connection()->getDriverName() === 'sqlite';
     }
 
     public static function getInstance(): self
     {
         return self::$instance ??= new self;
+    }
+
+    public static function reset(): void
+    {
+        self::$instance = null;
     }
 }

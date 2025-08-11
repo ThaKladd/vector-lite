@@ -2,19 +2,19 @@
 
 namespace ThaKladd\VectorLite\Traits;
 
-use Illuminate\Support\Str;
-use Illuminate\Support\Collection;
-use ThaKladd\VectorLite\VectorLite;
-use Illuminate\Support\Facades\Schema;
-use Illuminate\Database\Eloquent\Model;
-use ThaKladd\VectorLite\Enums\ReduceBy;
 use Illuminate\Database\Eloquent\Builder;
-use ThaKladd\VectorLite\Models\VectorModel;
-use ThaKladd\VectorLite\Tests\Models\Vector;
-use ThaKladd\VectorLite\Support\VectorLiteConfig;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasOne;
-use ThaKladd\VectorLite\Services\EmbeddingService;
+use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Str;
+use ThaKladd\VectorLite\Enums\ReduceBy;
+use ThaKladd\VectorLite\Models\VectorModel;
 use ThaKladd\VectorLite\QueryBuilders\VectorLiteQueryBuilder;
+use ThaKladd\VectorLite\Services\EmbeddingService;
+use ThaKladd\VectorLite\Support\VectorLiteConfig;
+use ThaKladd\VectorLite\Tests\Models\Vector;
+use ThaKladd\VectorLite\VectorLite;
 
 /**
  * @mixin Model
@@ -59,6 +59,9 @@ trait HasVector
             if ($model->isDirty($model->{self::vectorColumn()})) {
                 $hashColumn = $model->getVectorHashColumn(self::vectorColumn());
                 $model->$hashColumn = $model->hashVectorBlob(self::vectorColumn());
+            }
+            if (array_key_exists(self::similarityAlias(), $model->attributes)) {
+                unset($model->attributes[self::similarityAlias()]);
             }
         });
 
@@ -124,7 +127,7 @@ trait HasVector
      */
     public function vectorQuery(): VectorLiteQueryBuilder
     {
-        if (!VectorLiteConfig::getInstance()->isSqlLite) {
+        if (! VectorLiteConfig::getInstance()->isSqlLite) {
             throw new \RuntimeException('Vector queries only supported on SQLite');
         }
 
@@ -287,8 +290,8 @@ trait HasVector
     {
         $dimensions = $dimensions ?? config('vector-lite.default_dimensions');
         $embeddingServiceKey = config('vector-lite.openai.api_key');
-        $embedding =  $reducedEmbedding = null;
-        if($text) {
+        $embedding = $reducedEmbedding = null;
+        if ($text) {
             if ($embeddingServiceKey) {
                 $embeddingService = app(EmbeddingService::class);
                 $embedding = $embeddingService->createEmbedding($text, $dimensions);
@@ -303,7 +306,6 @@ trait HasVector
             }
         }
 
-
         return [$embedding, $reducedEmbedding];
     }
 
@@ -313,20 +315,20 @@ trait HasVector
     public function getBestVectorMatches(?int $limit = null): Collection
     {
         $config = VectorLiteConfig::getInstance();
-        if($config->isSqlLite){
+        if ($config->isSqlLite) {
             return static::query()->withoutModels($this)->bestByVector($this, $limit)->get();
         }
 
-        $clusterKeys = [];
+        $clusterKeys = collect([]);
         $clusterForeignKey = $this->getClusterForeignKey();
-        if($config->useClusteringDimensions){
+        if ($config->useClusteringDimensions) {
             $amountOfClusters = ceil($limit / $config->maxClusterSize) + 2;
-            $clusterKeys = $this->getBestClusters($amountOfClusters)->pluck('id');
+            $clusterKeys = $this->getBestClusters((int) $amountOfClusters)->pluck('id');
         }
 
         return static::query()
             ->where($this->getKeyName(), '!=', $this->getKey())
-            ->when(!empty($clusterKeys), fn($query) => $query->whereIn($clusterForeignKey, $clusterKeys))
+            ->when(! $clusterKeys->isEmpty(), fn ($query) => $query->whereIn($clusterForeignKey, $clusterKeys))
             ->get()
             ->searchBestByVector($this, $limit);
     }
@@ -334,14 +336,27 @@ trait HasVector
     /**
      * Find the best match for the vector on the current object
      */
-    public function findBestVectorMatch(): ?VectorModel
+    public function findBestVectorMatch(bool $includeCurrent = false): ?VectorModel
     {
         $config = VectorLiteConfig::getInstance();
-        if($config->isSqlLite){
-            return static::query()->withoutModels($this)->bestByVector($this, 1)->first();
+        if ($config->isSqlLite) {
+            $query = static::query();
+            if (! $includeCurrent) {
+                $query->withoutModels($this);
+            }
+            $query->bestByVector($this, 1)->first();
         }
         $clusterForeignKey = $this->getClusterForeignKey();
-        return static::where($clusterForeignKey, $this->$clusterForeignKey)->get()->except($this->getKey())->searchBestByVector($this, 1)->first();
+        $query = static::where($clusterForeignKey, $this->$clusterForeignKey);
+        $collection = $query->get();
+        if (! $includeCurrent) {
+            $collection = $collection->except($this->getKey());
+        }
+
+        $vectorModel = $collection->searchBestByVector($this, 1)->first();
+
+        /** @var VectorModel|null $vectorModel */
+        return $vectorModel;
     }
 
     /**
@@ -354,9 +369,18 @@ trait HasVector
         $small = VectorLite::smallVectorColumn($this);
         $attribute = self::vectorColumn().$small;
 
-        if(VectorLiteConfig::getInstance()->isSqlLite){
+        if (VectorLiteConfig::getInstance()->isSqlLite) {
             return $clusterClass::searchBestByVector($this->$attribute, $amount);
         }
+
         return $clusterClass::all()->searchBestByVector($this, $amount);
+    }
+
+    /**
+     * Find for the best cluster based on current model
+     */
+    public function findBestCluster(): ?VectorModel
+    {
+        return $this->getBestClusters(1)->first();
     }
 }

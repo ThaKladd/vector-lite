@@ -46,8 +46,8 @@ class VectorModelCollection extends Collection
 
                 return $item;
             })
-            ->sortByDesc($similarityAlias)
-            ->when($limit !== null, fn($collection) => $collection->take($limit))
+            ->sortByDesc(fn ($item) => $item->{$similarityAlias})
+            ->when($limit !== null, fn ($collection) => $collection->take($limit))
             ->values();
     }
 
@@ -123,13 +123,22 @@ class VectorModelCollection extends Collection
     }
 
     /**
-     * Removes models from the collection if present
+     * Removes models from the collection if present.
+     *
+     * @param  array<int, VectorModel>|VectorModel  $models
+     * @return static<VectorModel>
      */
     public function withoutModels(array|VectorModel $models): self
     {
         $modelsArray = is_array($models) ? $models : [$models];
         $excludeIds = collect($modelsArray)->pluck('id')->toArray();
-        return $this->filter(fn($item) => !in_array($item->id, $excludeIds));
+
+        $filtered = $this
+            ->filter(fn (VectorModel $item) => ! in_array($item->getKey(), $excludeIds, true))
+            ->values();
+
+        /** @var static<VectorModel> $filtered */
+        return $filtered;
     }
 
     /**

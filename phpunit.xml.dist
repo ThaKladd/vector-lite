@@ -24,10 +24,11 @@
         <junit outputFile="build/report.junit.xml"/>
     </logging>
     <php>
-        <!--<env name="DB_CONNECTION" value="sqlite"/>
-        <env name="DB_DATABASE" value=":memory:"/>
-        <env name="DB_CONNECTION" value="sqlite"/>
-        <env name="DB_DATABASE" value="/var/lib/sqld/testing.db"/>-->
+        <env name="MYSQL_HOST" value="db"/>
+        <env name="MYSQL_PORT" value="3306"/>
+        <env name="MYSQL_DATABASE" value="db"/>
+        <env name="MYSQL_USER" value="db"/>
+        <env name="MYSQL_PASSWORD" value="db"/>
     </php>
     <source>
         <include>

@@ -65,8 +65,11 @@ class TestCase extends Orchestra
         $tableName = 'vectors';
         $clusterTableName = 'vector_clusters';
 
-        Schema::dropIfExists($clusterTableName);
+        Schema::disableForeignKeyConstraints();
+        Schema::dropIfExists('others');
         Schema::dropIfExists($tableName);
+        Schema::dropIfExists($clusterTableName);
+        Schema::enableForeignKeyConstraints();
 
         Schema::create('others', function (Blueprint $table) {
             $table->id();

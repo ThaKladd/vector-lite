@@ -85,8 +85,9 @@ abstract class VectorModel extends Model implements HasVectorType
             $fieldsText .= $this->resolveEmbedPath($this, $path, 1);
         }
 
-        if(!empty($fieldsText)) {
+        if (! empty($fieldsText)) {
             $root = strtolower(class_basename($this));
+
             return "<{$root} id=\"{$this->getKey()}\">\n$fieldsText</{$root}>\n";
         }
 
