@@ -2,16 +2,14 @@
 
 namespace Illuminate\Database\Schema;
 
-/**
- * @method $this vectorLite(string $column, $length = null, $fixed = false)
- */
 class Blueprint
 {
-    /**
-     * @method void vectorLite(string $column, $length = null, $fixed = false)
-     * @method void vectorLiteCluster(string $column, $length = null, $fixed = false)
-     * @method void vectorLiteColumns(string $column, $length = null, $fixed = false)
-     * @method void dropVectorLiteColumns(string $column)
-     * @method void dropVectorLite(string $column)
-     */
+    // Externally called macros in your migrations
+    public function vectorLite(string $column, $length = null, $fixed = false): void {}
+    public function vectorLiteCluster(string $column, $length = null, $fixed = false): void {}
+    public function dropVectorLite(string $column): void {}
+    public function dropVectorLiteColumns(string $column): void {}
+
+    // Internal helper macro you call from other macros
+    public function vectorLiteColumns(string $column, $length = null, $fixed = false): void {}
 }

@@ -22,9 +22,9 @@ class VectorLiteServiceProvider extends PackageServiceProvider
         }
 
         /**
-         * @method Blueprint vectorLiteColumns(string $column, $length = null, $fixed = false)
+         * @method Blueprint vectorLiteColumns(string $column, ?int $length = null, bool $fixed = false)
          */
-        Blueprint::macro('vectorLiteColumns', function (string $column, $length = null, $fixed = false) {
+        Blueprint::macro('vectorLiteColumns', function (string $column, ?int $length = null, bool $fixed = false) {
             /** @var Blueprint $this */
             $this->binary($column, $length, $fixed)->nullable();
             $this->float($column.'_norm')->nullable();
@@ -37,18 +37,18 @@ class VectorLiteServiceProvider extends PackageServiceProvider
         });
 
         /**
-         * @method Blueprint vectorLite(string $column, $length = null, $fixed = false)
+         * @method Blueprint vectorLite(string $column, ?int $length = null, bool $fixed = false)
          */
-        Blueprint::macro('vectorLite', function (string $column, $length = null, $fixed = false) {
+        Blueprint::macro('vectorLite', function (string $column, ?int $length = null, bool $fixed = false) {
             /** @var Blueprint $this */
             $this->string('embed_hash')->nullable();
             $this->vectorLiteColumns($column, $length, $fixed);
         });
 
         /**
-         * @method Blueprint vectorLiteCluster(string $column, $length = null, $fixed = false)
+         * @method Blueprint vectorLiteCluster(string $column, ?int $length = null, $fixed = false)
          */
-        Blueprint::macro('vectorLiteCluster', function (string $column, $length = null, $fixed = false) {
+        Blueprint::macro('vectorLiteCluster', function (string $column, ?int $length = null, bool $fixed = false) {
             /** @var Blueprint $this */
             $this->vectorLiteColumns($column, $length, $fixed);
         });
