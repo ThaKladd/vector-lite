@@ -10,7 +10,12 @@ parameters:
     tmpDir: build/phpstan
     checkOctaneCompatibility: true
     checkModelProperties: true
+    reportUnmatchedIgnoredErrors: false
     stubFiles:
         - %currentWorkingDirectory%/phpstan/Blueprint.php
     ignoreErrors:
         - "#Called 'env' outside of the config directory which returns null when the config is cached, use 'config'#"
+        - message: '#Call to an undefined method Illuminate\\Database\\Schema\\Blueprint::vectorLiteColumns\(\)#'
+          path: src/VectorLiteServiceProvider.php
+        - message: '#Call to an undefined method Illuminate\\Database\\Schema\\Blueprint::dropVectorLiteColumns\(\)#'
+          path: src/VectorLiteServiceProvider.php
