@@ -148,6 +148,8 @@ On the model you also have two methods to get matching vectors `$model->findBest
 
 #### Scopes
 
+The scopes, and the custom querybuilder, is only with SqlLite.
+
 ```php
 $modelQuery = YourModel::query();
 $modelQuery->filterByClosestClusters(3);
@@ -167,7 +169,17 @@ $modelQuery->withoutSelf();
 $modelQuery->includeSelf();
 ```
 
-Similarly, the Vector models when fetched, go into a collection, and to it there are added a few methods as well.
+There are a few methods directly on your model as well, and these work with any database of your choice - like mysql.
+
+```php
+$model = YourModel::find(1);
+$model->getBestVectorMatches(3);
+$model->findBestVectorMatch();
+$model->getBestClusters(3);
+$model->findBestCluster();
+```
+
+Similarly, the Vector models when fetched, go into a collection, and to it there are added a few methods as well. These also work regardless of database choice.
 
 ```php
 $all = YourModel::all();
