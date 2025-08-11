@@ -10,6 +10,7 @@ class Blueprint
     /**
      * @method void vectorLite(string $column, $length = null, $fixed = false)
      * @method void vectorLiteCluster(string $column, $length = null, $fixed = false)
+     * @method void vectorLiteColumns(string $column, $length = null, $fixed = false)
      * @method void dropVectorLiteColumns(string $column)
      * @method void dropVectorLite(string $column)
      */
