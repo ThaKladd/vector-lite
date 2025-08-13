@@ -211,7 +211,7 @@ class VectorLiteQueryBuilder extends Builder
     private function searchClusters(null|array|string|VectorModel $vector = null)
     {
         $resolvedModel = $this->resolveModel();
-        $clusterModelName = $resolvedModel->getClusterModelName();
+        $clusterModelName = $resolvedModel->getClusterClass();
         $ids = $clusterModelName::searchBestByVector($vector, $this->clusterLimit)->pluck('id')->toArray();
         if (empty($ids)) {
             $this->whereRaw('1 = 0');
@@ -232,7 +232,7 @@ class VectorLiteQueryBuilder extends Builder
      */
     public function getBestClustersByVector(array|string|VectorModel $vector, int $amount = 1, bool $excludeInputModel = true): VectorModelCollection
     {
-        return $this->resolveModel()->getClusterModelName()::searchBestByVector($vector, $amount, $excludeInputModel);
+        return $this->resolveModel()->getClusterClass()::searchBestByVector($vector, $amount, $excludeInputModel);
     }
 
     /**
@@ -242,7 +242,7 @@ class VectorLiteQueryBuilder extends Builder
     {
         /** @var VectorModel|null $model */
         $model = $this->resolveModel()
-            ->getClusterModelName()::searchBestByVector($vector, 1, false)
+            ->getClusterClass()::searchBestByVector($vector, 1, false)
             ->first();
 
         return $model;

@@ -4,7 +4,8 @@ namespace ThaKladd\VectorLite\Traits;
 
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Relations\HasOne;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
@@ -13,7 +14,6 @@ use ThaKladd\VectorLite\Models\VectorModel;
 use ThaKladd\VectorLite\QueryBuilders\VectorLiteQueryBuilder;
 use ThaKladd\VectorLite\Services\EmbeddingService;
 use ThaKladd\VectorLite\Support\VectorLiteConfig;
-use ThaKladd\VectorLite\Tests\Models\Vector;
 use ThaKladd\VectorLite\VectorLite;
 
 /**
@@ -163,21 +163,11 @@ trait HasVector
     }
 
     /**
-     * Gets the name of the cluster model for the given model
-     *
-     * @return class-string<VectorModel>
-     */
-    public function getClusterModelName(): string
-    {
-        return get_class($this).'Cluster';
-    }
-
-    /**
      * Gets a new instance of the cluster model for the given model
      */
     public function getClusterModel(): VectorModel
     {
-        $clusterClass = $this->getClusterModelName();
+        $clusterClass = $this->getClusterClass();
 
         return new $clusterClass;
     }
@@ -187,12 +177,43 @@ trait HasVector
      */
     public function isCluster(): bool
     {
-        return str_ends_with($this->getModel()::class, 'Cluster');
+        return str_ends_with(class_basename(static::class), 'Cluster');
     }
 
+    /**
+     * Get the model name
+     */
     public function getModelName(): string
     {
-        return get_class($this);
+        return static::class;
+    }
+
+    /**
+     * Gets the name of the cluster for the given model
+     *
+     * @return class-string<VectorModel>
+     */
+    public function getClusterClass(): string
+    {
+        if ($this->isCluster()) {
+            return static::class;
+        }
+
+        return static::class.'Cluster';
+    }
+
+    /**
+     * Gets the name of the model for the given cluster
+     *
+     * @return class-string<VectorModel>
+     */
+    public function getModelClass(): string
+    {
+        if ($this->isCluster()) {
+            return str_replace('Cluster', '', static::class);
+        }
+
+        return static::class;
     }
 
     public function getUniqueRowIdAttribute(): string
@@ -275,12 +296,15 @@ trait HasVector
     }
 
     // Relationship to the cluster
-    public function cluster(): HasOne
+    public function cluster(): BelongsTo
     {
-        $clusterModelName = $this->getClusterModelName();
-        $clusterModel = new $clusterModelName;
+        return $this->belongsTo($this->getClusterClass());
+    }
 
-        return $this->hasOne($clusterModel::class);
+    // Relationship to the models
+    public function models(): HasMany
+    {
+        return $this->HasMany($this->getModelClass());
     }
 
     /**
@@ -365,7 +389,7 @@ trait HasVector
     public function getBestClusters(int $amount = 1): Collection
     {
         /** @var class-string<VectorModel> $clusterClass */
-        $clusterClass = $this->getClusterModelName();
+        $clusterClass = $this->getClusterClass();
         $small = VectorLite::smallVectorColumn($this);
         $attribute = self::vectorColumn().$small;
 

@@ -83,7 +83,7 @@ class VectorLite
             $this->clusterTable = $model->getClusterTableName();
             $this->clusterForeignKey = Str::singular($this->clusterTable).'_id';
             $this->matchColumn = Str::singular($this->clusterTable).'_match';
-            $this->clusterModelName = $model->getClusterModelName();
+            $this->clusterModelName = $model->getClusterClass();
             $this->modelClass = get_class($model);
             $this->maxClusterSize = $config->maxClusterSize;
             $this->modelTable = $model->getTable();

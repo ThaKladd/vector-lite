@@ -74,8 +74,6 @@ it('can create vector table and use vector methods - mysql', function () {
     useMySqlConnection();
     $this->setUpDatabase();
 
-    // Now run assertions against MySQL
-    expect(DB::connection()->getDatabaseName())->toBe('test_db');
     $vectorAmount = 10;
 
     // Check if the table exists

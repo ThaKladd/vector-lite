@@ -35,8 +35,8 @@ With VectorLite you can get the power of vectors within your existing SQLite dat
 
 ## Requirements
 
--   PHP 8.4+
--   Laravel 12.0+
+-   PHP 8.4+ (possible to add PHP 8.3 support if requested)
+-   Laravel 10.0+
 
 ## Usage
 
@@ -189,6 +189,14 @@ $all->filterAboveSimilarityThreshold($vector, 0.5);
 $all->pluckSimilarities($vector);
 $all->withSimilarities($vector);
 $all->findBestByVector($vector);
+```
+
+The `VectorModel` comes built in with relationship to the cluster, and vice versa.
+
+```php
+$model = YourModel::find(1);
+$cluster = $model->cluster;
+$models = $cluster->models;
 ```
 
 ### Provided by class

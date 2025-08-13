@@ -2,14 +2,24 @@
 
 namespace ThaKladd\VectorLite\Contracts;
 
-use Illuminate\Database\Eloquent\Relations\HasOne;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Collection;
 use ThaKladd\VectorLite\Models\VectorModel;
 use ThaKladd\VectorLite\QueryBuilders\VectorLiteQueryBuilder;
 
 interface HasVectorType
 {
-    public function newEloquentBuilder($query): VectorLiteQueryBuilder;
+    public static function similarityAlias(): string;
+
+    public static function vectorColumn(): string;
+
+    public static function embedHashColumn(): string;
+
+    public function vectorQuery(): VectorLiteQueryBuilder;
+
+    public function newEloquentBuilder($query): VectorLiteQueryBuilder|Builder;
 
     public function initializeHasVector(): void;
 
@@ -17,7 +27,9 @@ interface HasVectorType
 
     public function getClusterTableName(): string;
 
-    public function getClusterModelName(): string;
+    public function getClusterClass(): string;
+
+    public function getModelClass(): string;
 
     public function getClusterModel(): VectorModel;
 
@@ -31,7 +43,9 @@ interface HasVectorType
 
     public function setVectorAttribute(array $vector): void;
 
-    public function cluster(): HasOne;
+    public function cluster(): BelongsTo;
+
+    public function models(): HasMany;
 
     public function createEmbedding(string $text, ?int $dimensions = null): array;
 
@@ -40,4 +54,6 @@ interface HasVectorType
     public function findBestVectorMatch(): ?VectorModel;
 
     public function getBestClusters(int $amount = 1): Collection;
+
+    public function findBestCluster(): ?VectorModel;
 }
