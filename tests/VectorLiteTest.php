@@ -18,15 +18,6 @@ uses(VectorTestHelpers::class);
 
 function useMySqlConnection(array $overrides = []): void
 {
-    config()->set('database.connections.mysql', [
-        'driver' => 'mysql',
-        'host' => env('MYSQL_HOST', 'db'),
-        'port' => env('MYSQL_PORT', '3306'),
-        'database' => env('MYSQL_DATABASE', 'db'),
-        'username' => env('MYSQL_USER', 'db'),
-        'password' => env('MYSQL_PASSWORD', 'db'),
-    ]);
-
     config()->set('database.default', 'mysql');
 
     DB::purge();
