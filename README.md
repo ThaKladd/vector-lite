@@ -130,7 +130,7 @@ In practice, it will add `'vector'`, `'vector_hash'`, `'vector_norm'` columns to
 
 ## Methods
 
-There is a new attribute you can add to your model `protected $embedFields = ['title', 'other.description'];` that is used to define what fields the data of the vector consists of.
+There is a new attribute you can add to your model `protected $embedFields = ['title', 'other.description', 'methodName'];` that is used to define what fields the data of the vector consists of.
 
 ### Provided by trait
 
