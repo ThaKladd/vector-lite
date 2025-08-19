@@ -9,10 +9,15 @@ class Vector extends VectorModel
 {
     protected $guarded = [];
 
-    protected $embedFields = ['title', 'other.description'];
+    protected $embedFields = ['title', 'other.description', 'customMethod'];
 
     public function other(): BelongsTo
     {
         return $this->BelongsTo(Other::class);
+    }
+
+    public function customMethod(): array
+    {
+        return ['title' => 'Text', 'body' => 'Description to the text.'];
     }
 }

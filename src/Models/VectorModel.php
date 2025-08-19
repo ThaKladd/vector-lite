@@ -109,7 +109,7 @@ abstract class VectorModel extends Model implements HasVectorType
         $remaining = implode('.', $parts);
 
         // Attribute
-        if (empty($parts)) {
+        if (empty($parts) && array_key_exists($first, $model->getAttributes())) {
             $value = $model->getAttribute($first);
             if ($value === null || $value === '') {
                 return '';
