@@ -26,6 +26,9 @@ class EmbeddingService
                 'X-Accel-Buffering' => 'no',
             ],
             'timeout' => 60,
+            'curl' => [
+                CURLOPT_SSLVERSION => CURL_SSLVERSION_TLSv1_2,
+            ],
         ]);
     }
 
