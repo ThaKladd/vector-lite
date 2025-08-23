@@ -8,7 +8,9 @@ use Illuminate\Support\Collection;
 use ThaKladd\VectorLite\Collections\VectorModelCollection;
 use ThaKladd\VectorLite\Contracts\HasVectorType;
 use ThaKladd\VectorLite\QueryBuilders\VectorLiteQueryBuilder;
+use ThaKladd\VectorLite\Services\EmbeddingService;
 use ThaKladd\VectorLite\Traits\HasVector;
+use ThaKladd\VectorLite\VectorLite;
 
 abstract class VectorModel extends Model implements HasVectorType
 {
@@ -36,7 +38,7 @@ abstract class VectorModel extends Model implements HasVectorType
 
     protected function mergeFillableFromVectorColumn(): void
     {
-        if (!empty($this->fillable)) {
+        if (! empty($this->fillable)) {
             $column = static::vectorColumn();
             $vectorColumns = [$column, $column.'_norm', $column.'_hash'];
 
@@ -89,13 +91,20 @@ abstract class VectorModel extends Model implements HasVectorType
             $fieldsText .= $this->resolveEmbedPath($this, $path, 1);
         }
 
+        $text = '';
         if (! empty($fieldsText)) {
             $root = strtolower(class_basename($this));
 
-            return "<{$root} id=\"{$this->getKey()}\">\n$fieldsText</{$root}>\n";
+            $text = "<{$root} id=\"{$this->getKey()}\">\n$fieldsText</{$root}>\n";
         }
 
-        return '';
+        // Update embedding hash column.
+        $hash = VectorLite::hashText($text);
+        if ($this->{self::embedHashColumn()} !== $hash) {
+            $this->{self::embedHashColumn()} = $hash;
+        }
+
+        return $text;
     }
 
     /**
@@ -227,5 +236,35 @@ abstract class VectorModel extends Model implements HasVectorType
         }
 
         return self::$relationCache[$class][$name];
+    }
+
+    /**
+     * Creates an embedding, from the models embedding text
+     */
+    public function createEmbedding(): array
+    {
+        $text = $this->getEmbeddingText();
+        $dimensions = config('vector-lite.default_dimensions');
+        $embeddingServiceKey = config('vector-lite.openai.api_key');
+        $embedding = null;
+        if ($text) {
+            if ($embeddingServiceKey && $dimensions) {
+                $embeddingService = app(EmbeddingService::class);
+                $embedding = $embeddingService->createEmbedding($text, $dimensions);
+            }
+        }
+
+        return $embedding;
+    }
+
+    /**
+     * Creates the embeddings, and adds it to the model
+     * together with reduced model if activated
+     */
+    public function createAndFillEmbedding(): static
+    {
+        $this->{self::vectorColumn()} = $this->createEmbedding();
+
+        return $this;
     }
 }

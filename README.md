@@ -128,6 +128,10 @@ It will also ask you if you want to use clustering, and it will run the clusteri
 
 In practice, it will add `'vector'`, `'vector_hash'`, `'vector_norm'` columns to your model, together with the `'_small'` variants. With added clustering it will make a new table `'model_clusters'` as well as append your model table with `'model_cluster_id'` and `'model_cluster_match'` columns. For embeddings there will be a `'embed_hash'` as well to keep track of changes in the data.
 
+### And, then, how to use?
+
+Nothing will happen until you actually add a vector to the model. You can do this on creation, or later. The choice of how is up to you, but adding a OpenAi key (as the only supported embedding model so far is their text-embedding-3-small), and use the provided `EmbeddingService` class. If you set the `$embedFields` (see below) you can use the `$vectorModel->getEmbeddingText()` method that builds a pseudo-xml of the text you want to make a vector for. Then, you use it with the EmbeddingService to get the vector to set: `$vectorModel->vector = EmbeddingService::createEmbedding($vectorModel->getEmbeddingText())` and then save the model to cluster it if you use clustering. There is a shortcut for this with `$vectorModel->vector = $vectorModel->createEmbedding()` or even simpler `$vectorModel->createAndFillEmbedding()->save()`.
+
 ## Methods
 
 There is a new attribute you can add to your model `protected $embedFields = ['title', 'other.description', 'methodName'];` that is used to define what fields the data of the vector consists of.

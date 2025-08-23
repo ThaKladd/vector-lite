@@ -9,10 +9,8 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
-use ThaKladd\VectorLite\Enums\ReduceBy;
 use ThaKladd\VectorLite\Models\VectorModel;
 use ThaKladd\VectorLite\QueryBuilders\VectorLiteQueryBuilder;
-use ThaKladd\VectorLite\Services\EmbeddingService;
 use ThaKladd\VectorLite\Support\VectorLiteConfig;
 use ThaKladd\VectorLite\VectorLite;
 
@@ -33,55 +31,29 @@ trait HasVector
         });
 
         static::created(function ($model) {
-            // Remove the computed attribute if it exists in the attributes array
-            /*
-            if (array_key_exists($model->similarityAlias, $model->attributes)) {
-                unset($model->attributes[$model->similarityAlias]);
-            }
-
-            if (!in_array($model->similarityAlias, $model->guarded)) {
-                $model->guarded[] = $model->similarityAlias;
-            }*/
-
-            // if ($model->isDirty($model->vectorColumn)) {
-            // $model->vector = VectorLite::normalizeToBinary($model->vector);
             // Only attempt clustering if a clusters table exists
             $clusterTable = $model->getClusterTableName();
             if (Schema::hasTable($clusterTable) && $model->{self::vectorColumn()}) {
                 // Delegate the clustering logic to a dedicated service
                 new VectorLite($model)->processCreated($model);
             }
-            // }
         });
 
         static::saving(function ($model) {
-            // If the vector column is dirty, re-create hash
-            if ($model->isDirty($model->{self::vectorColumn()})) {
-                $hashColumn = $model->getVectorHashColumn(self::vectorColumn());
-                $model->$hashColumn = $model->hashVectorBlob(self::vectorColumn());
-            }
             if (array_key_exists(self::similarityAlias(), $model->attributes)) {
                 unset($model->attributes[self::similarityAlias()]);
+            }
+            if (! empty($model->embedFields)) {
+                $model->getEmbeddingText();
             }
         });
 
         static::saved(function ($model) {
             // If saved, and the vector column was dirty, re-calculate the cluster
             $clusterTable = $model->getClusterTableName();
-            if (Schema::hasTable($clusterTable) && $model->isDirty($model->{self::vectorColumn()}) && $model->{self::vectorColumn()}) {
+            if (Schema::hasTable($clusterTable) && $model->isDirty(self::vectorColumn()) && $model->{self::vectorColumn()}) {
                 // Delegate the clustering logic to a dedicated service
                 new VectorLite($model)->processUpdated($model);
-            }
-
-            if (! empty($model->embedFields)) {
-                $text = $model->getEmbeddingText();
-                $hash = VectorLite::hashText($text);
-
-                if ($model->{self::embedHashColumn()} !== $hash) {
-                    $model->{self::embedHashColumn()} = $hash;
-                    $model->saveQuietly();
-                    $model->createEmbedding($text);
-                }
             }
         });
 
@@ -305,32 +277,6 @@ trait HasVector
     public function models(): HasMany
     {
         return $this->HasMany($this->getModelClass());
-    }
-
-    /**
-     * Creates an embedding, and, if turned on, a reduced embedding, for the text input
-     */
-    public function createEmbedding(string $text, ?int $dimensions = null): array
-    {
-        $dimensions = $dimensions ?? config('vector-lite.default_dimensions');
-        $embeddingServiceKey = config('vector-lite.openai.api_key');
-        $embedding = $reducedEmbedding = null;
-        if ($text) {
-            if ($embeddingServiceKey) {
-                $embeddingService = app(EmbeddingService::class);
-                $embedding = $embeddingService->createEmbedding($text, $dimensions);
-            }
-
-            $reducedEmbedding = [];
-            if ($embedding && config('vector-lite.use_clustering_dimensions')) {
-                $dimensions = config('vector-lite.clustering_dimensions');
-                $reduceByMethod = config('vector-lite.reduction_method');
-                $vectorInput = $reduceByMethod === ReduceBy::NEW_EMBEDDING ? $text : $embedding;
-                $reducedEmbedding = $reduceByMethod->reduceVector($vectorInput, $dimensions);
-            }
-        }
-
-        return [$embedding, $reducedEmbedding];
     }
 
     /**

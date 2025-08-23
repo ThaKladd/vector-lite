@@ -47,7 +47,9 @@ interface HasVectorType
 
     public function models(): HasMany;
 
-    public function createEmbedding(string $text, ?int $dimensions = null): array;
+    public function createEmbedding(): array;
+
+    public function createAndFillEmbedding(): static;
 
     public function getBestVectorMatches(?int $limit = null): Collection;
 
