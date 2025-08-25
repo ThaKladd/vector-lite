@@ -35,7 +35,7 @@ trait HasVector
             $clusterTable = $model->getClusterTableName();
             if (Schema::hasTable($clusterTable) && $model->{self::vectorColumn()}) {
                 // Delegate the clustering logic to a dedicated service
-                new VectorLite($model)->processCreated($model);
+                (new VectorLite($model))->processCreated($model);
             }
         });
 
@@ -53,7 +53,7 @@ trait HasVector
             $clusterTable = $model->getClusterTableName();
             if (Schema::hasTable($clusterTable) && $model->isDirty(self::vectorColumn()) && $model->{self::vectorColumn()}) {
                 // Delegate the clustering logic to a dedicated service
-                new VectorLite($model)->processUpdated($model);
+                (new VectorLite($model))->processUpdated($model);
             }
         });
 
@@ -62,7 +62,7 @@ trait HasVector
             $clusterTable = $model->getClusterTableName();
             if (Schema::hasTable($clusterTable) && $model->{self::vectorColumn()}) {
                 // Delegate the clustering logic to a dedicated service
-                new VectorLite($model)->processDelete($model);
+                (new VectorLite($model))->processDelete($model);
             }
         });
     }

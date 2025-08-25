@@ -135,11 +135,9 @@ class VectorLite
                     $this->clusterForeignKey => null,
                     $this->matchColumn => null,
                 ]);
-
-            // Recalculate the cluster as new vector is created
-            $this->processCreated($model);
         }
-
+        // Recalculate the cluster as new vector is created
+        $this->processCreated($model);
     }
 
     public function processCreated(VectorModel $model): void
@@ -290,10 +288,9 @@ class VectorLite
 
     protected function updateModelWithCluster(VectorModel $model, VectorModel $cluster, float $similarity): void
     {
-        DB::table($this->modelTable)->where('id', $model->getKey())->update([
-            $this->clusterForeignKey => $cluster->getKey(),
-            $this->matchColumn => $similarity,
-        ]);
+        $model->{$this->clusterForeignKey} = $cluster->getKey();
+        $model->{$this->matchColumn} = $similarity;
+        $model->saveQuietly();
     }
 
     protected function handleFullCluster($fullCluster): void
