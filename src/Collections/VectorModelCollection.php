@@ -22,7 +22,7 @@ class VectorModelCollection extends Collection
      */
     private function computeSimilarity(VectorModel $model, array|string|VectorModel $vector): float
     {
-        if(is_null($model->{VectorModel::vectorColumn()})){
+        if (is_null($model->{VectorModel::vectorColumn()})) {
             return -1;
         }
 
