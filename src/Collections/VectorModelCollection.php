@@ -22,6 +22,10 @@ class VectorModelCollection extends Collection
      */
     private function computeSimilarity(VectorModel $model, array|string|VectorModel $vector): float
     {
+        if(is_null($model->{VectorModel::vectorColumn()})){
+            return -1;
+        }
+
         if (is_null(self::$useCache)) {
             self::$useCache = config('vector-lite.use_cached_cosim', false);
         }
