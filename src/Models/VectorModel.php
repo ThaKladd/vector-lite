@@ -98,12 +98,6 @@ abstract class VectorModel extends Model implements HasVectorType
             $text = "<{$root} id=\"{$this->getKey()}\">\n$fieldsText</{$root}>\n";
         }
 
-        // Update embedding hash column.
-        $hash = VectorLite::hashText($text);
-        if ($this->{self::embedHashColumn()} !== $hash) {
-            $this->{self::embedHashColumn()} = $hash;
-        }
-
         return $text;
     }
 
@@ -241,9 +235,9 @@ abstract class VectorModel extends Model implements HasVectorType
     /**
      * Creates an embedding, from the models embedding text
      */
-    public function createEmbedding(): array
+    public function createEmbedding(?string $text = null): array
     {
-        $text = $this->getEmbeddingText();
+        $text = $text ?? $this->getEmbeddingText();
         $dimensions = config('vector-lite.default_dimensions');
         $embeddingServiceKey = config('vector-lite.openai.api_key');
         $embedding = null;
@@ -263,7 +257,14 @@ abstract class VectorModel extends Model implements HasVectorType
      */
     public function createAndFillEmbedding(): static
     {
-        $this->{self::vectorColumn()} = $this->createEmbedding();
+        $text = $this->getEmbeddingText();
+        $hash = VectorLite::hashText($text);
+
+        // Only create fill vector if hash has changed
+        if ($this->{self::embedHashColumn()} !== $hash) {
+            $this->{self::embedHashColumn()} = $hash;
+            $this->{self::vectorColumn()} = $this->createEmbedding($text);
+        }
 
         return $this;
     }

@@ -23,7 +23,9 @@ trait HasVector
 
     public static function bootHasVector(): void
     {
+
         static::creating(function ($model) {
+            /** @var VectorModel $model */
             // Make sure the computed attribute is not saved
             if (array_key_exists(self::similarityAlias(), $model->attributes)) {
                 unset($model->attributes[self::similarityAlias()]);
@@ -31,6 +33,7 @@ trait HasVector
         });
 
         static::created(function ($model) {
+            /** @var VectorModel $model */
             // Only attempt clustering if a clusters table exists
             $clusterTable = $model->getClusterTableName();
             if (Schema::hasTable($clusterTable) && $model->{self::vectorColumn()}) {
@@ -40,15 +43,18 @@ trait HasVector
         });
 
         static::saving(function ($model) {
+            /** @var VectorModel $model */
             if (array_key_exists(self::similarityAlias(), $model->attributes)) {
                 unset($model->attributes[self::similarityAlias()]);
             }
             if (! empty($model->embedFields)) {
-                $model->getEmbeddingText();
+                // Update embedding hash column and create new embedding if changed.
+                $model->createAndFillEmbedding();
             }
         });
 
         static::saved(function ($model) {
+            /** @var VectorModel $model */
             // If saved, and the vector column was dirty, re-calculate the cluster
             $clusterTable = $model->getClusterTableName();
             if (Schema::hasTable($clusterTable) && $model->isDirty(self::vectorColumn()) && $model->{self::vectorColumn()}) {
@@ -58,6 +64,7 @@ trait HasVector
         });
 
         static::deleted(function ($model) {
+            /** @var VectorModel $model */
             // If deleted, remove from the cluster
             $clusterTable = $model->getClusterTableName();
             if (Schema::hasTable($clusterTable) && $model->{self::vectorColumn()}) {
