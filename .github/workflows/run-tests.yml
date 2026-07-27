@@ -18,9 +18,12 @@ jobs:
       matrix:
         os: [ubuntu-latest]
         php: [8.4]
-        laravel: [12.*, 11.*, 10.*]
+        laravel: [13.*, 12.*, 11.*, 10.*]
         stability: [prefer-lowest, prefer-stable]
         include:
+          - laravel: 13.*
+            testbench: 11.*
+            carbon: ^3.8.4
           - laravel: 12.*
             testbench: 10.*
             carbon: ^3.8.4
@@ -53,7 +56,8 @@ jobs:
         uses: shivammathur/setup-php@v2
         with:
           php-version: ${{ matrix.php }}
-          extensions: dom, curl, libxml, mbstring, zip, pcntl, pdo, sqlite, pdo_sqlite, bcmath, soap, intl, gd, exif, iconv, imagick, fileinfo
+          extensions: dom, curl, libxml, mbstring, zip, pcntl, pdo, sqlite, pdo_sqlite, bcmath, soap, intl, gd, exif, iconv, imagick, fileinfo, ffi
+          ini-values: ffi.enable=true
           coverage: none
 
       - name: Setup problem matchers

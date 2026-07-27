@@ -98,6 +98,10 @@ return [
     'use_cached_cosim' => true,
     'cache_driver' => env('CACHE_DRIVER', false),
     'cache_time' => 60 * 60 * 24,
+    'ffi' => [
+        'enabled' => env('VECTOR_LITE_FFI_ENABLED', false),
+        'library_path' => env('VECTOR_LITE_FFI_LIBRARY_PATH'),
+    ],
     'exclude_self_by_default' => false,
 ];
 ```
@@ -212,6 +216,105 @@ All of them are used within VectorLite but is also available to use.
 use ThaKladd\VectorLite\VectorLite;
 ```
 
+## Laravel 13 / AI SDK compatibility
+
+Laravel 13 introduced native vector support via a separate opt-in package, [`laravel/ai`](https://laravel.com/docs/13.x/ai-sdk) - a `$table->vector()` migration column, an `'embedding' => 'array'` cast, query methods like `whereVectorSimilarTo()`, and `Embeddings`/`Reranking`/`SimilaritySearch` helpers. It only works on **PostgreSQL with the `pgvector` extension**.
+
+vector-lite is a standalone package (no dependency on `laravel/ai`) that mirrors that same API surface on SQLite, under its own namespace, so code written the "official" way shifts over seamlessly whether or not `laravel/ai` is installed and whether the connection is SQLite or Postgres.
+
+### Migration column
+
+Core's `$table->vector('embedding', dimensions: 1536)` throws on SQLite (`Grammar::typeVector()` has no SQLite implementation), and can't be overridden by a macro since `vector()` is a real method on `Blueprint`. Use vector-lite's own macro instead, reshaped to accept the same `dimensions` argument:
+
+```php
+$table->vectorLite('embedding', dimensions: 1536);
+```
+
+This creates the same `embedding` / `embedding_norm` / `embedding_hash` (and, when clustering-dimension reduction is enabled, `embedding_small*`) columns vector-lite has always used - `dimensions` just sizes the binary column. `->index()` isn't chainable off of it (SQLite has no vector-index concept; the `_hash` column is already indexed for lookups).
+
+### Casting
+
+```php
+use ThaKladd\VectorLite\Casts\AsVector;
+
+protected $casts = [
+    'embedding' => AsVector::class, // Laravel 11+: casts(): array { return ['embedding' => AsVector::class]; }
+];
+```
+
+The SQLite equivalent of the AI SDK's `'embedding' => 'array'` cast: get unpacks the stored binary vector back to a float array, set normalizes and packs it (plus writes the `_norm`/`_hash` companions, and the clustering `_small` trio when applicable).
+
+### One nameable vector column per model
+
+```php
+protected static ?string $vectorColumnName = 'embedding';
+```
+
+Overrides the app-wide `vector-lite.vector_column` config for that model only. Pair a non-default name with the `AsVector` cast above rather than the legacy `$model->vector = [...]` mutator, which is always keyed to the literal attribute name `vector`.
+
+### Query methods
+
+On SQLite, `VectorLiteQueryBuilder` adds the same method names as the AI SDK:
+
+```php
+Document::query()->whereVectorSimilarTo('embedding', $queryEmbedding, minSimilarity: 0.4);
+Document::query()->whereVectorSimilarTo('embedding', 'best wineries in Napa Valley'); // auto-embeds the string
+
+Document::query()
+    ->select('*') // selectVectorDistance() is additive, like the AI SDK's - select('*') first to keep other columns
+    ->selectVectorDistance('embedding', $queryEmbedding, as: 'distance')
+    ->whereVectorDistanceLessThan('embedding', $queryEmbedding, maxDistance: 0.3)
+    ->orderByVectorDistance('embedding', $queryEmbedding);
+```
+
+Two differences from the official semantics to be aware of:
+
+-   vector-lite only computes **cosine distance** (`1 - cosine similarity`). pgvector can also do L2/Euclidean or inner-product distance depending on the index type - there's no equivalent here.
+-   A **string** argument to these four methods is treated as natural-language text to embed (matching the AI SDK). This differs from the rest of vector-lite's own API (`whereVector()`, `bestByVector()`, etc.), where a string means an already-packed binary vector.
+
+These four methods exist on every `VectorModel` query regardless of database driver, but only actually **work** on SQLite - `COSIM`/`COSIM_CACHE` are only registered as SQLite functions, so calling `->get()` (or any other execution) on MySQL or Postgres-without-`laravel/ai` raises a query error rather than a "method not found" error. On those drivers, use the [collection methods](#provided-by-trait) instead.
+
+### Embeddings & caching
+
+```php
+use ThaKladd\VectorLite\Embeddings;
+use Illuminate\Support\Str;
+
+$response = Embeddings::for(['Napa Valley has great wine.'])->cache(seconds: 3600)->generate();
+$response->embeddings; // [[0.123, 0.456, ...]]
+
+$embedding = Str::of('Napa Valley has great wine.')->toEmbeddings(cache: true);
+```
+
+Backed by vector-lite's own `EmbeddingService` (OpenAI), not `laravel/ai`'s multi-provider client. Caching is configured under `vector-lite.caching.embeddings` in the config file (`cache`, `store`, `ttl`), mirroring the shape of `config('ai.caching.embeddings')`.
+
+### Reranking
+
+```php
+use ThaKladd\VectorLite\Reranking;
+
+$response = Reranking::of([$textA, $textB])->rerank('PHP frameworks');
+$response->first()->document;
+$response->first()->score;
+$response->first()->index;
+
+// Or on any collection:
+$posts->rerank('body', 'Laravel tutorials');
+```
+
+vector-lite has no dedicated reranker model (the AI SDK uses Cohere/Jina/VoyageAI). This scores documents by cosine similarity between embeddings of the query and each document - a reasonable standalone approximation, but not a cross-encoder reranker, so scores won't match a real reranker numerically.
+
+### SimilaritySearch
+
+```php
+use ThaKladd\VectorLite\Tools\SimilaritySearch;
+
+$tool = SimilaritySearch::usingModel(Document::class, 'embedding', minSimilarity: 0.7, limit: 10);
+$tool('best wineries in Napa Valley');
+```
+
+A plain, directly-callable class under vector-lite's own namespace - not a drop-in for `laravel/ai`'s agent `tools()` contract, since that's only meaningful if that package is installed.
+
 ## Testing & Fixing
 
 For running the PHPUnit tests:
@@ -262,6 +365,23 @@ Note on cache: If I ran the same queries twice, where I do 1000 queries - the se
 When using clusters, inserting 100 is quite quick (0.0719 seconds). Inserting 1000 is still ok (0.6752 seconds), but when inserting 10000 time begins to slow down drastically (39.5224 seconds initially - but latest version managed to do this in around 10 seconds).
 
 This is because in order to trigger the cluster algorithm, the object needs to be created with Laravel amd cannot be done in batches.
+
+## FFI dot product (experimental)
+
+On SQLite, `COSIM`/`COSIM_CACHE` normally compute the dot product by unpacking each vector into a PHP array and summing products in a PHP loop. As an alternative, vector-lite ships a small C dot product function (`resources/c/dot_product.c`), prebuilt for **Linux (x86_64/aarch64)** and **Windows (x86_64)** under `resources/c/lib/`, that it can call into via PHP's [FFI extension](https://www.php.net/manual/en/book.ffi.php) instead - the packed vector bytes are passed straight through, with no unpacking into PHP arrays. On those platforms there is nothing to compile; just enable it.
+
+```
+VECTOR_LITE_FFI_ENABLED=true
+```
+
+Requirements/notes:
+
+-   The `ffi` PHP extension must be loaded, with `ffi.enable=true` in `php.ini` (it defaults to preload-only, which blocks runtime `FFI::cdef()` calls).
+-   If the extension is missing, `ffi.enable` blocks it, or no library is available for the platform, vector-lite silently falls back to the PHP implementation - nothing needs to change in your code either way.
+-   **macOS has no prebuilt binary yet.** Compile `resources/c/dot_product.c` yourself (`gcc -O3 -shared -fPIC -o dot_product.dylib resources/c/dot_product.c`) and point `VECTOR_LITE_FFI_LIBRARY_PATH` at the result to use it there.
+-   `VECTOR_LITE_FFI_LIBRARY_PATH` also lets you override the shipped binary on any platform with your own build.
+-   This only changes how the dot product itself is computed; clustering, caching, and every other behavior stays the same.
+-   Whether this is actually faster depends on your PHP build and vector sizes - it trades away the PHP-array cache (`use_cached_cosim`) memoization for a tighter C loop, so measure before turning it on for a big dataset.
 
 ## Support us
 

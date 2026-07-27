@@ -10,9 +10,16 @@ class EmbeddingService
 
     private Client $client;
 
+    private ?int $timeoutOverride = null;
+
     public function setModel(string $model)
     {
         $this->embeddingModel = $model;
+    }
+
+    public function setTimeout(int $seconds): void
+    {
+        $this->timeoutOverride = $seconds;
     }
 
     public function __construct()
@@ -34,14 +41,20 @@ class EmbeddingService
 
     public function createEmbeddings(array $texts, ?int $dimensions = null): array
     {
-        $response = $this->client->post('embeddings', [
+        $options = [
             'json' => [
                 'input' => $texts,
                 'model' => $this->embeddingModel,
                 'encoding_format' => 'float',
                 'dimensions' => $dimensions ?? config('vector-lite.default_dimensions'),
             ],
-        ]);
+        ];
+
+        if ($this->timeoutOverride !== null) {
+            $options['timeout'] = $this->timeoutOverride;
+        }
+
+        $response = $this->client->post('embeddings', $options);
 
         return json_decode($response->getBody()->getContents(), true)['data'] ?? [];
     }

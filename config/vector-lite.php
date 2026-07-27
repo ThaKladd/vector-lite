@@ -97,6 +97,51 @@ return [
     'cache_time' => 60 * 60 * 24, // Cache time in seconds
 
     /*
+    |--------------------------------------------------------------------------
+    | FFI dot product
+    |--------------------------------------------------------------------------
+    |
+    | Cosine similarity (COSIM/COSIM_CACHE) is normally computed by unpacking
+    | vectors into PHP arrays and summing products in a PHP loop. Turning
+    | this on computes the dot product in C via PHP's FFI extension instead
+    | - the packed vector bytes are passed straight through, with no
+    | unpacking. A prebuilt library (compiled from resources/c/dot_product.c)
+    | ships for Linux (x86_64/aarch64) and Windows (x86_64) under
+    | resources/c/lib/ and is picked automatically for the running
+    | OS/architecture - nothing needs to be compiled on those platforms.
+    |
+    | Requires the "ffi" extension (and ffi.enable=true in php.ini, since it
+    | defaults to preload-only). Silently falls back to the PHP
+    | implementation if disabled, the extension is missing, the ini
+    | directive blocks it, or no library is available (e.g. on macOS, which
+    | has no shipped binary yet - compile resources/c/dot_product.c
+    | yourself and set "library_path" below to use it there).
+    */
+    'ffi' => [
+        'enabled' => env('VECTOR_LITE_FFI_ENABLED', false),
+        'library_path' => env('VECTOR_LITE_FFI_LIBRARY_PATH'),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Embeddings caching
+    |--------------------------------------------------------------------------
+    |
+    | Mirrors Laravel AI SDK's config('ai.caching.embeddings') shape, for the
+    | Embeddings::for(...)->cache()->generate() / Str::toEmbeddings(cache: ...)
+    | helpers. When 'cache' is enabled, every generated embedding is cached
+    | (keyed on model, dimensions, and the input text) for 'ttl' seconds,
+    | unless a call overrides the duration with ->cache(seconds: ...).
+    */
+    'caching' => [
+        'embeddings' => [
+            'cache' => env('VECTOR_LITE_CACHE_EMBEDDINGS', false),
+            'store' => env('CACHE_STORE', 'database'),
+            'ttl' => 60 * 60 * 24 * 30, // 30 days
+        ],
+    ],
+
+    /*
      * --------------------------------------------------------------------------
      * Other settings
      * --------------------------------------------------------------------------

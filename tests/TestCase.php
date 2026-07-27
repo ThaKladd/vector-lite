@@ -67,6 +67,7 @@ class TestCase extends Orchestra
 
         Schema::disableForeignKeyConstraints();
         Schema::dropIfExists('others');
+        Schema::dropIfExists('documents');
         Schema::dropIfExists($tableName);
         Schema::dropIfExists($clusterTableName);
         Schema::enableForeignKeyConstraints();
@@ -74,6 +75,15 @@ class TestCase extends Orchestra
         Schema::create('others', function (Blueprint $table) {
             $table->id();
             $table->string('description')->nullable();
+            $table->timestamps();
+        });
+
+        // Used by the AI-SDK-compatibility tests: a per-model, non-default
+        // vector column name ("embedding"), with no cluster table sibling.
+        Schema::create('documents', function (Blueprint $table) {
+            $table->id();
+            $table->string('title')->nullable();
+            $table->vectorLite('embedding', dimensions: 6);
             $table->timestamps();
         });
 

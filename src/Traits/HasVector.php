@@ -21,6 +21,16 @@ trait HasVector
 {
     public bool $useCache = false;
 
+    /**
+     * Overrides the app-wide `vector-lite.vector_column` config for this model,
+     * so a model can use its own vector column name (e.g. "embedding" to match
+     * Laravel's AI SDK naming). When set to anything other than the default
+     * mutator name "vector", pair it with the AsVector cast in casts() rather
+     * than the legacy $model->vector = [...] mutator, since setVectorAttribute()
+     * only fires for the literal attribute name "vector".
+     */
+    protected static ?string $vectorColumnName = null;
+
     public static function bootHasVector(): void
     {
 
@@ -81,7 +91,7 @@ trait HasVector
 
     public static function vectorColumn(): string
     {
-        return config('vector-lite.vector_column', 'vector');
+        return static::$vectorColumnName ?? config('vector-lite.vector_column', 'vector');
     }
 
     public static function embedHashColumn(): string

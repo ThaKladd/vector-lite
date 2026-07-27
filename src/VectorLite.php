@@ -8,6 +8,7 @@ use Illuminate\Support\Str;
 use ThaKladd\VectorLite\Models\VectorModel;
 use ThaKladd\VectorLite\Support\ClusterCache;
 use ThaKladd\VectorLite\Support\VectorLiteConfig;
+use ThaKladd\VectorLite\Support\VectorLiteFfi;
 
 class VectorLite
 {
@@ -575,16 +576,23 @@ class VectorLite
             return self::$dot[$targetId][$queryId];
         }
 
-        // Cache the unpacked vectors for the current session
-        if (! isset(self::$cache[$queryId])) {
-            self::$cache[$queryId] = self::binaryVectorToArray($binaryQueryVector);
+        if (VectorLiteFfi::isAvailable()) {
+            // No need to unpack/cache the arrays - the C function reads the packed floats directly.
+            $dotProduct = VectorLiteFfi::dotProduct($binaryTargetVector, $binaryQueryVector);
+        } else {
+            // Cache the unpacked vectors for the current session
+            if (! isset(self::$cache[$queryId])) {
+                self::$cache[$queryId] = self::binaryVectorToArray($binaryQueryVector);
+            }
+
+            if (! isset(self::$cache[$targetId])) {
+                self::$cache[$targetId] = self::binaryVectorToArray($binaryTargetVector);
+            }
+
+            $dotProduct = self::dotProduct(self::$cache[$queryId], self::$cache[$targetId]);
         }
 
-        if (! isset(self::$cache[$targetId])) {
-            self::$cache[$targetId] = self::binaryVectorToArray($binaryTargetVector);
-        }
-
-        self::$dot[$targetId][$queryId] = $dotProduct = self::dotProduct(self::$cache[$queryId], self::$cache[$targetId]);
+        self::$dot[$targetId][$queryId] = $dotProduct;
 
         if (isset(self::$driver) && self::$driver) {
             Cache::store(self::$driver)->put('vector-lite-cache', self::$dot, self::$cacheTime);
@@ -662,6 +670,10 @@ class VectorLite
      */
     public static function cosineSimilarityBinary(string $binaryTargetVector, string $binaryQueryVector): float
     {
+        if (VectorLiteFfi::isAvailable()) {
+            return VectorLiteFfi::dotProduct($binaryTargetVector, $binaryQueryVector);
+        }
+
         $queryVector = unpack('f*', $binaryQueryVector);
         $targetVector = unpack('f*', $binaryTargetVector);
 

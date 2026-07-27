@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\Schema;
 use ThaKladd\VectorLite\Collections\VectorModelCollection;
 use ThaKladd\VectorLite\Models\VectorModel;
+use ThaKladd\VectorLite\Services\EmbeddingService;
 use ThaKladd\VectorLite\Support\SqlValidator;
 use ThaKladd\VectorLite\VectorLite;
 
@@ -100,12 +101,15 @@ class VectorLiteQueryBuilder extends Builder
 
     /**
      * Gets the qualified vector column name, table.vector
+     * An explicit $column bypasses the model's configured vector column
+     * (and its clustering "_small" suffix), used by the AI-SDK-style
+     * per-call-column methods (whereVectorSimilarTo, etc.).
      */
-    protected function qualifiedVectorColumnName(?VectorModel $model = null): string
+    protected function qualifiedVectorColumnName(?VectorModel $model = null, ?string $column = null): string
     {
         $resolvedModel = $this->resolveModel($model);
 
-        return $resolvedModel->getTable().'.'.$this->vectorColumnNameWithSmall($resolvedModel);
+        return $resolvedModel->getTable().'.'.$this->vectorColumnNameWithSmall($resolvedModel, $column);
     }
 
     /**
@@ -130,10 +134,17 @@ class VectorLiteQueryBuilder extends Builder
     }
 
     /**
-     * Get the column name including the _small version if applicable
+     * Get the column name including the _small version if applicable.
+     * An explicit $column is used as-is (no clustering "_small" suffix),
+     * since it names a specific physical column rather than "the" model's
+     * configured vector column.
      */
-    private function vectorColumnNameWithSmall(?VectorModel $model = null): string
+    private function vectorColumnNameWithSmall(?VectorModel $model = null, ?string $column = null): string
     {
+        if ($column !== null) {
+            return $column;
+        }
+
         $resolvedModel = $this->resolveModel($model);
         $suffix = $resolvedModel->isCluster() ? VectorLite::smallVectorColumn($resolvedModel) : '';
 
@@ -144,19 +155,19 @@ class VectorLiteQueryBuilder extends Builder
      * Gets the hash column for the vector, including if the small vector is used
      * If there is no hash column, then use a table:id as the unique identifier
      */
-    public function getVectorHashColumn(?VectorModel $model = null): string
+    public function getVectorHashColumn(?VectorModel $model = null, ?string $column = null): string
     {
         $resolvedModel = $this->resolveModel($model);
         $table = $resolvedModel->getTable();
 
-        $column = $this->vectorColumnNameWithSmall($resolvedModel).'_hash';
-        $key = "$table.$column";
+        $hashColumn = $this->vectorColumnNameWithSmall($resolvedModel, $column).'_hash';
+        $key = "$table.$hashColumn";
 
         if (! isset(self::$hashColumnExistsCache[$key])) {
-            self::$hashColumnExistsCache[$key] = Schema::hasColumn($table, $column);
+            self::$hashColumnExistsCache[$key] = Schema::hasColumn($table, $hashColumn);
         }
 
-        return self::$hashColumnExistsCache[$key] ? $column : "'{$table}:{$resolvedModel->getKey()}'";
+        return self::$hashColumnExistsCache[$key] ? $hashColumn : "'{$table}:{$resolvedModel->getKey()}'";
     }
 
     /**
@@ -176,12 +187,12 @@ class VectorLiteQueryBuilder extends Builder
      * The method needs one argument for the binding,
      * that is the same vector that is passed here
      */
-    protected function getCosimMethod(array $resolvedVector): string
+    protected function getCosimMethod(array $resolvedVector, ?string $column = null): string
     {
-        $vectorColumn = $this->qualifiedVectorColumnName();
+        $vectorColumn = $this->qualifiedVectorColumnName(null, $column);
         if ($this->useCachedCosim()) {
 
-            $hashColumn = $this->getVectorHashColumn();
+            $hashColumn = $this->getVectorHashColumn(null, $column);
             $binaryVector = $this->preparedBinaryVector($resolvedVector);
             $hashedSmallVector = VectorLite::hashVectorBlob($binaryVector);
 
@@ -189,6 +200,22 @@ class VectorLiteQueryBuilder extends Builder
         } else {
             return "COSIM({$vectorColumn}, ?)";
         }
+    }
+
+    /**
+     * Resolves array|string embedding input for the AI-SDK-style methods
+     * below. Unlike the rest of this query builder (whereVector(),
+     * bestByVector(), etc.), where a string means an already-packed binary
+     * vector, a string here is treated as natural-language text to embed —
+     * matching Laravel's AI SDK whereVectorSimilarTo() semantics.
+     */
+    protected function resolveEmbeddingInput(array|string $embedding): array
+    {
+        if (is_array($embedding)) {
+            return $embedding;
+        }
+
+        return app(EmbeddingService::class)->createEmbedding($embedding, config('vector-lite.default_dimensions'));
     }
 
     /**
@@ -313,9 +340,10 @@ class VectorLiteQueryBuilder extends Builder
     public function whereVector(array|string|VectorModel $vector, string $operator = '>', float $threshold = 0.0): static
     {
         SqlValidator::validateOperator($operator);
-        $cosimMethodCall = $this->getCosimMethod($vector);
-        $binaryVector = $this->preparedBinaryVector($vector);
-        $this->whereRaw("$cosimMethodCall $operator ?", [$binaryVector, $threshold]);
+        $resolvedVector = $this->resolveVector($vector);
+        $cosimMethodCall = $this->getCosimMethod($resolvedVector);
+        $binaryVector = $this->preparedBinaryVector($resolvedVector);
+        $this->whereRaw("$cosimMethodCall $operator CAST(? AS REAL)", [$binaryVector, $threshold]);
 
         return $this;
     }
@@ -325,9 +353,70 @@ class VectorLiteQueryBuilder extends Builder
      */
     public function whereVectorBetween(array|string|VectorModel $vector, float $min = 0.0, float $max = 1.0): static
     {
-        $cosimMethodCall = $this->getCosimMethod($vector);
-        $binaryVector = $this->preparedBinaryVector($vector);
-        $this->whereRaw("$cosimMethodCall BETWEEN ? AND ?", [$binaryVector, $min, $max]);
+        $resolvedVector = $this->resolveVector($vector);
+        $cosimMethodCall = $this->getCosimMethod($resolvedVector);
+        $binaryVector = $this->preparedBinaryVector($resolvedVector);
+        $this->whereRaw("$cosimMethodCall BETWEEN CAST(? AS REAL) AND CAST(? AS REAL)", [$binaryVector, $min, $max]);
+
+        return $this;
+    }
+
+    /**
+     * Filter to rows whose cosine similarity to the given embedding is at
+     * least $minSimilarity. Mirrors Laravel's AI SDK whereVectorSimilarTo().
+     * Unlike whereVector(), a string $embedding is text to embed, not a
+     * packed binary vector - see resolveEmbeddingInput().
+     */
+    public function whereVectorSimilarTo(string $column, array|string $embedding, float $minSimilarity = 0.0): static
+    {
+        $resolvedVector = $this->resolveEmbeddingInput($embedding);
+        $cosimMethodCall = $this->getCosimMethod($resolvedVector, $column);
+        $binaryVector = $this->preparedBinaryVector($resolvedVector);
+        $this->whereRaw("$cosimMethodCall >= CAST(? AS REAL)", [$binaryVector, $minSimilarity]);
+
+        return $this;
+    }
+
+    /**
+     * Select the cosine distance (1 - cosine similarity) to the given
+     * embedding as $as. Mirrors Laravel's AI SDK selectVectorDistance().
+     * vector-lite only supports cosine distance, not L2/inner-product.
+     */
+    public function selectVectorDistance(string $column, array|string $embedding, string $as = 'distance'): static
+    {
+        $resolvedVector = $this->resolveEmbeddingInput($embedding);
+        $cosimMethodCall = $this->getCosimMethod($resolvedVector, $column);
+        $binaryVector = $this->preparedBinaryVector($resolvedVector);
+        $this->selectRaw("(1 - {$cosimMethodCall}) as {$as}", [$binaryVector]);
+
+        return $this;
+    }
+
+    /**
+     * Filter to rows whose cosine distance (1 - cosine similarity) to the
+     * given embedding is less than $maxDistance. Mirrors Laravel's AI SDK
+     * whereVectorDistanceLessThan().
+     */
+    public function whereVectorDistanceLessThan(string $column, array|string $embedding, float $maxDistance): static
+    {
+        $resolvedVector = $this->resolveEmbeddingInput($embedding);
+        $cosimMethodCall = $this->getCosimMethod($resolvedVector, $column);
+        $binaryVector = $this->preparedBinaryVector($resolvedVector);
+        $this->whereRaw("(1 - {$cosimMethodCall}) < CAST(? AS REAL)", [$binaryVector, $maxDistance]);
+
+        return $this;
+    }
+
+    /**
+     * Order by cosine distance (1 - cosine similarity) to the given
+     * embedding, closest first. Mirrors Laravel's AI SDK orderByVectorDistance().
+     */
+    public function orderByVectorDistance(string $column, array|string $embedding): static
+    {
+        $resolvedVector = $this->resolveEmbeddingInput($embedding);
+        $cosimMethodCall = $this->getCosimMethod($resolvedVector, $column);
+        $binaryVector = $this->preparedBinaryVector($resolvedVector);
+        $this->orderByRaw("(1 - {$cosimMethodCall}) ASC", [$binaryVector]);
 
         return $this;
     }
@@ -347,7 +436,11 @@ class VectorLiteQueryBuilder extends Builder
         $model = $this->resolveModel();
         if ($this->shouldUseSimilarityAlias($vector)) {
             // If the similarity column is already selected, use it in the HAVING clause.
-            $this->having($model::similarityAlias(), $operator, $threshold);
+            // CAST is required: SQLite compares a bound float (bound as TEXT storage
+            // class by PDO) against the alias's numeric value using storage-class
+            // ordering (numeric always < text) unless explicitly cast to REAL - the
+            // fluent having() can't express that, so this uses havingRaw() instead.
+            $this->havingRaw("{$model::similarityAlias()} {$operator} CAST(? AS REAL)", [$threshold]);
 
             return $this;
         }
@@ -358,7 +451,7 @@ class VectorLiteQueryBuilder extends Builder
         // (Note: Using HAVING RAW here because operators and bindings must be inline.)
         $cosimMethodCall = $this->getCosimMethod($resolvedVector);
         $binaryVector = $this->preparedBinaryVector($resolvedVector);
-        $this->havingRaw("$cosimMethodCall $operator ?", [$binaryVector, $threshold]);
+        $this->havingRaw("$cosimMethodCall $operator CAST(? AS REAL)", [$binaryVector, $threshold]);
 
         return $this;
     }
