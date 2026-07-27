@@ -1,5 +1,7 @@
 <?php
 
+use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use ThaKladd\VectorLite\Embeddings;
@@ -110,7 +112,7 @@ it('AI SDK query methods exist but fail at execution time on mysql (COSIM is a S
     // it only fails once COSIM/COSIM_CACHE actually get executed, since those
     // are registered as SQLite-only functions in VectorLiteServiceProvider.
     expect(fn () => Vector::query()->whereVectorSimilarTo('vector', [1, 0], 0.5)->get())
-        ->toThrow(\Illuminate\Database\QueryException::class);
+        ->toThrow(QueryException::class);
 });
 
 it('caches embeddings via Embeddings::for()->cache() and reuses them on the next call', function () {
@@ -396,7 +398,7 @@ it('limits results and lets a custom query closure narrow the SimilaritySearch t
 });
 
 it('runs a similarity search via a custom `using` closure passed to the constructor', function () {
-    $tool = new SimilaritySearch(using: fn (string $query) => \Illuminate\Database\Eloquent\Collection::make(["echo: {$query}"]));
+    $tool = new SimilaritySearch(using: fn (string $query) => Collection::make(["echo: {$query}"]));
 
     expect($tool('hello')->all())->toBe(['echo: hello']);
 });

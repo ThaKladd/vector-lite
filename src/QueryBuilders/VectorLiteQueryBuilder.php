@@ -13,7 +13,7 @@ use ThaKladd\VectorLite\VectorLite;
 /**
  * @template TModel of \Illuminate\Database\Eloquent\Model
  *
- * @extends \Illuminate\Database\Eloquent\Builder<TModel>
+ * @extends Builder<TModel>
  */
 class VectorLiteQueryBuilder extends Builder
 {

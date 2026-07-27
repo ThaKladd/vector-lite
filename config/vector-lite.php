@@ -1,5 +1,7 @@
 <?php
 
+use ThaKladd\VectorLite\Enums\ReduceBy;
+
 // config for ThaKladd/VectorLite
 return [
     /*
@@ -57,7 +59,7 @@ return [
     */
     'default_dimensions' => 1536, // Default dimensions for vectors
     'use_clustering_dimensions' => true, // Use clustering dimensions for clustering
-    'reduction_method' => \ThaKladd\VectorLite\Enums\ReduceBy::RPM, // Method to reduce dimensions for clustering
+    'reduction_method' => ReduceBy::RPM, // Method to reduce dimensions for clustering
     'clustering_dimensions' => 64, // Default dimensions for clustering vectors
 
     /*

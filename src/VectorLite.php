@@ -304,7 +304,7 @@ class VectorLite
         $modelClassName = $this->modelClass;
         $vectorColumn = $modelClassName::vectorColumn();
 
-        /** @var class-string<\ThaKladd\VectorLite\Models\VectorModel> $modelClassName */
+        /** @var class-string<VectorModel> $modelClassName */
         $clusterVectors = $modelClassName::query()
             ->select([
                 'id',
@@ -321,7 +321,7 @@ class VectorLite
             ->get();
 
         // Get the model that is the least similar in the cluster, make a new cluster, and assign it to model
-        /** @var \ThaKladd\VectorLite\Models\VectorModel $leastSimilarModel */
+        /** @var VectorModel $leastSimilarModel */
         $leastSimilarModel = $clusterVectors->shift();
         $newCluster = $this->createNewCluster($leastSimilarModel);
         $this->cacheClusterOperation($fullCluster, -1);
@@ -330,12 +330,12 @@ class VectorLite
         $updates = [];
 
         // Iterate through the rest of the models in the cluster.
-        /** @var \ThaKladd\VectorLite\Models\VectorModel $leastMatchModel */
+        /** @var VectorModel $leastMatchModel */
         foreach ($clusterVectors as $leastMatchModel) {
             // For each model in the cluster, find the best matching cluster.
             $bestCluster = $this->findBestCluster($leastMatchModel);
 
-            /** @var \ThaKladd\VectorLite\Models\VectorModel $bestCluster */
+            /** @var VectorModel $bestCluster */
             // Round to 14 decimals because of what database column can hold
             $bestSimilarity = round($bestCluster->similarity, 13);
             $leastMatchModelSimilarity = round($leastMatchModel->{$this->matchColumn}, 13);
