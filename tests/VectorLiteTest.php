@@ -3,7 +3,6 @@
 use Illuminate\Support\Facades\DB;
 use ThaKladd\VectorLite\Enums\ReduceBy;
 use ThaKladd\VectorLite\Models\VectorModel;
-use ThaKladd\VectorLite\Services\EmbeddingService;
 use ThaKladd\VectorLite\Support\ClusterCache;
 use ThaKladd\VectorLite\Support\VectorLiteConfig;
 use ThaKladd\VectorLite\Tests\Helpers\VectorTestHelpers;
@@ -17,14 +16,6 @@ ini_set('memory_limit', '20000M');
 
 uses(VectorTestHelpers::class);
 
-function useMySqlConnection(array $overrides = []): void
-{
-    config()->set('database.default', 'mysql');
-
-    DB::purge();
-    DB::reconnect();
-}
-
 it('can connect to database', function () {
     $result = DB::select('SELECT 1 AS test');
     expect($result[0]->test)->toBe(1);
@@ -35,14 +26,7 @@ it('can create vector table and use vector methods - sqlite', function () {
     ClusterCache::reset();
     $vectorAmount = 100;
 
-    $mockEmbeddingService = Mockery::mock(EmbeddingService::class);
-    $mockEmbeddingService
-        ->shouldReceive('createEmbedding')
-        ->with(Mockery::type('string'), Mockery::type('int'))
-        ->andReturnUsing(function ($text, $dim) {
-            return $this->createVectorArray($dim);
-        });
-    $this->app->instance(EmbeddingService::class, $mockEmbeddingService);
+    $this->fakeEmbeddingApi();
 
     // Check if the table exists
     $this->assertTrue(DB::getSchemaBuilder()->hasTable('vectors'));
@@ -84,14 +68,7 @@ it('can create vector table and use vector methods - mysql', function () {
     useMySqlConnection();
     $this->setUpDatabase();
 
-    $mockEmbeddingService = Mockery::mock(EmbeddingService::class);
-    $mockEmbeddingService
-        ->shouldReceive('createEmbedding')
-        ->with(Mockery::type('string'), Mockery::type('int'))
-        ->andReturnUsing(function ($text, $dim) {
-            return $this->createVectorArray($dim);
-        });
-    $this->app->instance(EmbeddingService::class, $mockEmbeddingService);
+    $this->fakeEmbeddingApi();
 
     $vectorAmount = 10;
 
@@ -125,14 +102,7 @@ it('can do clustering of vectors - sqlite', function () {
     VectorLiteConfig::reset();
     ClusterCache::reset();
 
-    $mockEmbeddingService = Mockery::mock(EmbeddingService::class);
-    $mockEmbeddingService
-        ->shouldReceive('createEmbedding')
-        ->with(Mockery::type('string'), Mockery::type('int'))
-        ->andReturnUsing(function ($text, $dim) {
-            return $this->createVectorArray($dim);
-        });
-    $this->app->instance(EmbeddingService::class, $mockEmbeddingService);
+    $this->fakeEmbeddingApi();
 
     $vectorAmount = 5000; // 5000 should make the clustering have an effect on speed
     $clusterSize = config('vector-lite.clusters_size');
@@ -187,14 +157,7 @@ it('can do clustering of vectors - mysql', function () {
     useMySqlConnection();
     $this->setUpDatabase();
 
-    $mockEmbeddingService = Mockery::mock(EmbeddingService::class);
-    $mockEmbeddingService
-        ->shouldReceive('createEmbedding')
-        ->with(Mockery::type('string'), Mockery::type('int'))
-        ->andReturnUsing(function ($text, $dim) {
-            return $this->createVectorArray($dim);
-        });
-    $this->app->instance(EmbeddingService::class, $mockEmbeddingService);
+    $this->fakeEmbeddingApi();
 
     $vectorClusters = DB::table('vector_clusters')->count();
 
@@ -238,14 +201,7 @@ it('works with object calls', function () {
     VectorLiteConfig::reset();
     ClusterCache::reset();
 
-    $mockEmbeddingService = Mockery::mock(EmbeddingService::class);
-    $mockEmbeddingService
-        ->shouldReceive('createEmbedding')
-        ->with(Mockery::type('string'), Mockery::type('int'))
-        ->andReturnUsing(function ($text, $dim) {
-            return $this->createVectorArray($dim);
-        });
-    $this->app->instance(EmbeddingService::class, $mockEmbeddingService);
+    $this->fakeEmbeddingApi();
 
     $this->fillVectorTable(100, 36);
     $vectorModel = Vector::query()->inRandomOrder()->first();
@@ -265,14 +221,7 @@ it('works with static calls', function () {
     VectorLiteConfig::reset();
     ClusterCache::reset();
 
-    $mockEmbeddingService = Mockery::mock(EmbeddingService::class);
-    $mockEmbeddingService
-        ->shouldReceive('createEmbedding')
-        ->with(Mockery::type('string'), Mockery::type('int'))
-        ->andReturnUsing(function ($text, $dim) {
-            return $this->createVectorArray($dim);
-        });
-    $this->app->instance(EmbeddingService::class, $mockEmbeddingService);
+    $this->fakeEmbeddingApi();
 
     $this->fillVectorTable(100, 36);
     $vectorModel = Vector::query()->inRandomOrder()->first();
@@ -307,14 +256,7 @@ it('can transform a vector', function () {
 it('can use the methods on the collection', function () {
     VectorLiteConfig::reset();
     ClusterCache::reset();
-    $mockEmbeddingService = Mockery::mock(EmbeddingService::class);
-    $mockEmbeddingService
-        ->shouldReceive('createEmbedding')
-        ->with(Mockery::type('string'), Mockery::type('int'))
-        ->andReturnUsing(function ($text, $dim) {
-            return $this->createVectorArray($dim);
-        });
-    $this->app->instance(EmbeddingService::class, $mockEmbeddingService);
+    $this->fakeEmbeddingApi();
 
     $vectorAmount = 1000;
     $this->assertTrue(DB::getSchemaBuilder()->hasTable('vector_clusters'));
@@ -341,14 +283,7 @@ it('changes model embedding after text change', function () {
     VectorLiteConfig::reset();
     ClusterCache::reset();
 
-    $mockEmbeddingService = Mockery::mock(EmbeddingService::class);
-    $mockEmbeddingService
-        ->shouldReceive('createEmbedding')
-        ->with(Mockery::type('string'), Mockery::type('int'))
-        ->andReturnUsing(function ($text, $dim) {
-            return $this->createVectorArray($dim);
-        });
-    $this->app->instance(EmbeddingService::class, $mockEmbeddingService);
+    $this->fakeEmbeddingApi();
 
     $vectorAmount = 50;
     $this->fillVectorTable($vectorAmount, 36);

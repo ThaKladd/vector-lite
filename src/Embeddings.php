@@ -3,13 +3,19 @@
 namespace ThaKladd\VectorLite;
 
 use Illuminate\Support\Facades\Cache;
+use ThaKladd\VectorLite\Enums\EmbeddingInputType;
 use ThaKladd\VectorLite\Services\EmbeddingService;
+use ThaKladd\VectorLite\Support\EmbeddingConfig;
 use ThaKladd\VectorLite\Support\EmbeddingsResponse;
 
 /**
  * Standalone equivalent of Laravel AI SDK's `Laravel\Ai\Embeddings`, generating
- * embeddings via vector-lite's own EmbeddingService (OpenAI) behind the same
- * fluent shape: Embeddings::for([...])->dimensions()->cache()->generate().
+ * embeddings via vector-lite's own EmbeddingService (the configured
+ * OpenAI-compatible endpoint) behind the same fluent shape:
+ * Embeddings::for([...])->dimensions()->cache()->generate().
+ *
+ * Inputs are embedded as documents by default; call ->asQuery() for search
+ * text, so it gets vector-lite.embeddings.query_prefix instead.
  *
  * A real class with a real static for(), not a Facade - so it works whether
  * or not laravel/ai is also installed, under its own namespace. It's also
@@ -20,7 +26,7 @@ final class Embeddings
 {
     protected ?int $dimensions = null;
 
-    protected string $model = 'text-embedding-3-small';
+    protected EmbeddingInputType $inputType = EmbeddingInputType::Document;
 
     protected bool $cacheEnabled;
 
@@ -48,6 +54,26 @@ final class Embeddings
         return $this;
     }
 
+    /**
+     * Embed the inputs as search queries (query_prefix) rather than documents.
+     */
+    public function asQuery(): static
+    {
+        $this->inputType = EmbeddingInputType::Query;
+
+        return $this;
+    }
+
+    /**
+     * Embed the inputs as documents (document_prefix) - the default.
+     */
+    public function asDocument(): static
+    {
+        $this->inputType = EmbeddingInputType::Document;
+
+        return $this;
+    }
+
     public function timeout(int $seconds): static
     {
         $this->timeoutSeconds = $seconds;
@@ -69,21 +95,35 @@ final class Embeddings
     }
 
     /**
-     * $provider is accepted (and ignored) purely so calls written against
-     * Laravel's AI SDK - e.g. ->generate(Lab::OpenAI, 'text-embedding-3-small') -
-     * don't error out standalone; vector-lite only has one embedding provider.
+     * Mirrors Laravel AI SDK's ->generate($provider, $model).
+     *
+     * $provider (a name or enum such as Lab::OpenAI) selects an endpoint from
+     * vector-lite.embeddings.providers - "openai" is built in - and defaults
+     * to the main vector-lite.embeddings endpoint. $model overrides the
+     * model for this call. Failover lists aren't supported: vectors from
+     * different models can't be mixed.
      */
     public function generate(mixed $provider = null, ?string $model = null): EmbeddingsResponse
     {
-        $model ??= $this->model;
-        $dimensions = $this->dimensions ?? config('vector-lite.default_dimensions');
+        $service = app(EmbeddingService::class);
+        if ($provider !== null) {
+            $service->usingConfig(EmbeddingConfig::resolve($provider));
+        }
+        if ($model !== null && $model !== '') {
+            $service->setModel($model);
+        }
+        if ($this->timeoutSeconds !== null) {
+            $service->setTimeout($this->timeoutSeconds);
+        }
+
+        $config = $service->config()->withDimensions($this->dimensions);
 
         $embeddings = [];
         $toFetch = [];
         $toFetchIndexes = [];
 
         foreach ($this->inputs as $index => $input) {
-            $cacheKey = $this->cacheKey($model, $dimensions, $input);
+            $cacheKey = $config->cacheKey($input, $this->inputType);
             if ($this->cacheEnabled && Cache::store($this->store())->has($cacheKey)) {
                 $embeddings[$index] = Cache::store($this->store())->get($cacheKey);
 
@@ -94,19 +134,14 @@ final class Embeddings
         }
 
         if (! empty($toFetch)) {
-            $service = app(EmbeddingService::class);
-            $service->setModel($model);
-            if ($this->timeoutSeconds !== null) {
-                $service->setTimeout($this->timeoutSeconds);
-            }
-            $fetched = array_column($service->createEmbeddings($toFetch, $dimensions), 'embedding');
+            $fetched = array_column($service->createEmbeddings($toFetch, $config->dimensions, $this->inputType), 'embedding');
 
             foreach ($toFetchIndexes as $position => $index) {
-                $embeddings[$index] = $fetched[$position] ?? [];
+                $embeddings[$index] = $fetched[$position];
 
                 if ($this->cacheEnabled) {
                     Cache::store($this->store())->put(
-                        $this->cacheKey($model, $dimensions, $this->inputs[$index]),
+                        $config->cacheKey($this->inputs[$index], $this->inputType),
                         $embeddings[$index],
                         $this->cacheSeconds ?? config('vector-lite.caching.embeddings.ttl', 60 * 60 * 24 * 30)
                     );
@@ -122,10 +157,5 @@ final class Embeddings
     protected function store(): ?string
     {
         return config('vector-lite.caching.embeddings.store', 'database');
-    }
-
-    protected function cacheKey(string $model, int $dimensions, string $input): string
-    {
-        return 'vector-lite-embedding:'.VectorLite::hashText("openai|{$model}|{$dimensions}|{$input}");
     }
 }

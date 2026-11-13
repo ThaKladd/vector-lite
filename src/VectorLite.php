@@ -12,6 +12,15 @@ use ThaKladd\VectorLite\Support\VectorLiteFfi;
 
 class VectorLite
 {
+    /**
+     * The similarity given to a pair of vectors that can't be compared -
+     * different lengths (e.g. halfway through re-embedding with another
+     * model) or a missing vector. It's the lowest possible cosine
+     * similarity, the same score VectorModelCollection gives a model with
+     * no vector, so such rows sort last and fail any similarity threshold.
+     */
+    public const NON_MATCHING_SIMILARITY = -1.0;
+
     protected string $clusterTable = '';
 
     protected string $clusterModelName = '';
@@ -68,12 +77,25 @@ class VectorLite
         $config = VectorLiteConfig::getInstance();
         self::$driver = $config->cacheDriver;
         self::$cacheTime = $config->cacheTime;
-        self::$dot = Cache::store(self::$driver)->get('vector-lite-cache', []);
+        // Only a configured cache_driver persists the dot-product cache (see the
+        // put() calls below), so only then is there anything to load back.
+        self::$dot = self::$driver ? Cache::store(self::$driver)->get('vector-lite-cache', []) : [];
         self::$useClusteringDimensions = $config->useClusteringDimensions;
         self::$dimensions = $config->clusteringDimensions;
         self::$reduceByMethod = $config->reductionMethod;
         self::$initialized = true;
         self::$isSqlLite = $config->isSqlLite;
+    }
+
+    /**
+     * Forget the lazily-initialized config snapshot and the in-process
+     * caches, e.g. between tests that change vector-lite config.
+     */
+    public static function reset(): void
+    {
+        self::$initialized = false;
+        self::$clusterCache = [];
+        self::flushMemoryCache();
     }
 
     public function __construct(?VectorModel $model = null)
@@ -136,6 +158,13 @@ class VectorLite
                     $this->clusterForeignKey => null,
                     $this->matchColumn => null,
                 ]);
+
+            // processCreated() skips models that already have a cluster, so the
+            // in-memory model must forget the old one too - otherwise the row
+            // is left with no cluster at all.
+            $model->setAttribute($this->clusterForeignKey, null);
+            $model->setAttribute($this->matchColumn, null);
+            $model->syncOriginalAttributes([$this->clusterForeignKey, $this->matchColumn]);
         }
         // Recalculate the cluster as new vector is created
         $this->processCreated($model);
@@ -152,7 +181,9 @@ class VectorLite
         DB::transaction(function () use ($model) {
             // Find the closest cluster by cosine similarity to the model’s vector.
             $bestCluster = $this->findBestCluster($model);
-            if ($bestCluster) {
+            // A non-matching best cluster holds vectors of another length (e.g. from
+            // before a model switch) - start a cluster in the new space instead.
+            if ($bestCluster && (float) $bestCluster->similarity > self::NON_MATCHING_SIMILARITY) {
                 // Add to best cluster because it may be next best match there
                 $this->updateModelWithCluster($model, $bestCluster, $bestCluster->similarity);
                 $this->cacheClusterOperation($bestCluster, 1);
@@ -360,6 +391,70 @@ class VectorLite
         }
     }
 
+    /**
+     * Throws away every cluster of this model and clusters all rows that have
+     * a vector again, from scratch. Needed after re-embedding with another
+     * model or dimensions: the old cluster vectors are in the old space.
+     *
+     * @param  (callable(): void)|null  $advance  called once per clustered row, e.g. for a progress bar
+     * @return int the number of rows clustered
+     */
+    public function rebuildClusters(?callable $advance = null, int $chunkSize = 500): int
+    {
+        /** @var class-string<VectorModel> $modelClass */
+        $modelClass = $this->modelClass;
+
+        DB::table($this->modelTable)->update([
+            $this->clusterForeignKey => null,
+            $this->matchColumn => null,
+        ]);
+        DB::table($this->clusterTable)->delete();
+
+        self::$clusterCache = [];
+        $this->vectorCache = [];
+        ClusterCache::reset();
+        if (! self::$isSqlLite) {
+            self::$clusterListCache = ClusterCache::getInstance($this->clusterModelName);
+        }
+
+        $clustered = 0;
+        $modelClass::query()
+            ->whereNotNull($modelClass::vectorColumn())
+            ->chunkById($chunkSize, function ($models) use (&$clustered, $advance) {
+                foreach ($models as $model) {
+                    $this->processCreated($model);
+                    $this->vectorCache = [];
+                    $clustered++;
+                    if ($advance) {
+                        $advance();
+                    }
+                }
+                self::flushMemoryCache();
+            });
+
+        return $clustered;
+    }
+
+    /**
+     * Forget the in-process unpacked-vector and dot-product caches. They only
+     * memoize, so this is always safe - long-running bulk jobs (re-embedding,
+     * re-clustering) call it between chunks to keep memory flat.
+     */
+    public static function flushMemoryCache(): void
+    {
+        self::$cache = [];
+        self::$dot = [];
+    }
+
+    /**
+     * Whether two packed vectors can be compared at all: both present and of
+     * the same byte length (the same number of 4-byte floats).
+     */
+    public static function binaryVectorsComparable(?string $vectorA, ?string $vectorB): bool
+    {
+        return $vectorA !== null && $vectorB !== null && $vectorA !== '' && strlen($vectorA) === strlen($vectorB);
+    }
+
     public function cacheClusterOperation($cluster, $add = 1): void
     {
         if (! isset(self::$clusterCache[$cluster->id])) {
@@ -534,11 +629,10 @@ class VectorLite
                 $smallBinaryVector = self::normalToBinary($smallNormalizedVector);
                 $smallBinaryVectorHash = self::hashVectorBlob($smallBinaryVector);
                 self::$cache[$smallBinaryVectorHash] = $smallNormalizedVector;
-                $model->update([
-                    $vectorColumnSmall => $smallBinaryVector,
-                    $vectorColumnSmall.'_hash' => $smallBinaryVectorHash,
-                    $vectorColumnSmall.'_norm' => $norm,
-                ]);
+                $model->setAttribute($vectorColumnSmall, $smallBinaryVector);
+                $model->setAttribute($vectorColumnSmall.'_hash', $smallBinaryVectorHash);
+                $model->setAttribute($vectorColumnSmall.'_norm', $norm);
+                $model->save();
 
                 return $reducedVector;
             }
@@ -567,8 +661,17 @@ class VectorLite
     /**
      * Cosine similarity on binary vector with caching logic.
      */
-    public static function cosineSimilarityBinaryCache(int|string|null $targetId, string $binaryTargetVector, int|string|null $queryId, string $binaryQueryVector): float
+    public static function cosineSimilarityBinaryCache(int|string|null $targetId, ?string $binaryTargetVector, int|string|null $queryId, ?string $binaryQueryVector): float
     {
+        if (! self::binaryVectorsComparable($binaryTargetVector, $binaryQueryVector)) {
+            return self::NON_MATCHING_SIMILARITY;
+        }
+
+        // Without both ids there's no safe cache key (every id-less row would share one).
+        if ($targetId === null || $queryId === null) {
+            return self::cosineSimilarityBinary($binaryTargetVector, $binaryQueryVector);
+        }
+
         self::init();
 
         // Check if the dot product is already cached
@@ -606,6 +709,10 @@ class VectorLite
      */
     public static function cosineSimilarityCache(int|string $targetId, array $targetVector, int|string $queryId, array $queryVector): float
     {
+        if ($targetVector === [] || count($targetVector) !== count($queryVector)) {
+            return self::NON_MATCHING_SIMILARITY;
+        }
+
         self::init();
 
         // Check if the dot product is already cached
@@ -668,8 +775,15 @@ class VectorLite
     /**
      * Cosine similarity on binary vectors.
      */
-    public static function cosineSimilarityBinary(string $binaryTargetVector, string $binaryQueryVector): float
+    public static function cosineSimilarityBinary(?string $binaryTargetVector, ?string $binaryQueryVector): float
     {
+        // Never compute a number for vectors of different lengths - the FFI
+        // path would read past the shorter one, the PHP path would quietly
+        // ignore the tail. Both paths (and COSIM in SQL) treat it as non-matching.
+        if (! self::binaryVectorsComparable($binaryTargetVector, $binaryQueryVector)) {
+            return self::NON_MATCHING_SIMILARITY;
+        }
+
         if (VectorLiteFfi::isAvailable()) {
             return VectorLiteFfi::dotProduct($binaryTargetVector, $binaryQueryVector);
         }
@@ -710,6 +824,10 @@ class VectorLite
      */
     public static function cosineSimilarity(array $targetVector, array $queryVector): float
     {
+        if ($targetVector === [] || count($targetVector) !== count($queryVector)) {
+            return self::NON_MATCHING_SIMILARITY;
+        }
+
         return self::dotProduct($targetVector, $queryVector);
     }
 

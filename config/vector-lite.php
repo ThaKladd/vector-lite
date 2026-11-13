@@ -20,12 +20,62 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Embeddings
+    |--------------------------------------------------------------------------
+    |
+    | Where vectors come from. Any server with an OpenAI-compatible
+    | POST /v1/embeddings endpoint works: OpenAI itself (the default),
+    | Ollama, LM Studio, llama.cpp, vLLM or Text Embeddings Inference.
+    |
+    | One embedding model per vector column: vectors from different models
+    | (or dimensions, or document prefixes) live in different spaces and
+    | cannot be compared. Changing any of these marks every row as stale
+    | (see embed_hash); re-embed them with `php artisan vector-lite:reembed`.
+    |
+    | - url: base URL (".../v1/") or the full ".../v1/embeddings" endpoint.
+    | - api_key: sent as a Bearer token when set. Local servers don't need one.
+    |   For OpenAI it falls back to 'openai.api_key' (OPENAI_API_KEY) below.
+    | - send_dimensions: send 'default_dimensions' as "dimensions". Turn off
+    |   for models that reject it; the returned length is validated either way.
+    | - query_prefix / document_prefix: prepended to search queries and to
+    |   stored documents. Asymmetric retrieval models need them, e.g.
+    |   Qwen3-Embedding: query_prefix =
+    |     "Instruct: Given a web search query, retrieve relevant passages that answer the query\nQuery:"
+    |   EmbeddingGemma 2: query_prefix = "task: search result | query: ",
+    |     document_prefix = "title: none | text: "
+    |   (In .env, use double quotes so "\n" becomes a newline.)
+    | - on_error: what the model saving hook does when the provider fails.
+    |   'throw' (default) aborts the save. 'skip' reports the error and saves
+    |   the model without a new vector; its embed_hash stays stale, so the
+    |   next save or `vector-lite:reembed --only-stale` retries it.
+    | - providers: optional named endpoints for Embeddings::...->generate('name').
+    |   Each inherits the settings above except api_key. "openai" is built in.
+    |
+    */
+    'embeddings' => [
+        'url' => env('VECTOR_LITE_EMBEDDINGS_URL', 'https://api.openai.com/v1/'),
+        'api_key' => env('VECTOR_LITE_EMBEDDINGS_API_KEY'),
+        'model' => env('VECTOR_LITE_EMBEDDINGS_MODEL', 'text-embedding-3-small'),
+        'timeout' => (int) env('VECTOR_LITE_EMBEDDINGS_TIMEOUT', 60),
+        'send_dimensions' => env('VECTOR_LITE_EMBEDDINGS_SEND_DIMENSIONS', true),
+        'query_prefix' => env('VECTOR_LITE_EMBEDDINGS_QUERY_PREFIX', ''),
+        'document_prefix' => env('VECTOR_LITE_EMBEDDINGS_DOCUMENT_PREFIX', ''),
+        'on_error' => env('VECTOR_LITE_EMBEDDINGS_ON_ERROR', 'throw'), // 'throw' or 'skip'
+        'providers' => [
+            // 'ollama' => [
+            //     'url' => 'http://localhost:11434/v1/',
+            //     'model' => 'qwen3-embedding:0.6b',
+            // ],
+        ],
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | OpenAi API Key
     |--------------------------------------------------------------------------
     |
-    | If you want to use the built-in support for OpenAi embeddings in order
-    | to create the vectors stored in the database, then you can provide
-    | your own API key, from your .env file in your project root.
+    | Legacy location of the OpenAI key, still used as the fallback key when
+    | the embeddings endpoint above is OpenAI and has no api_key of its own.
     |
     */
     'openai' => [
@@ -39,7 +89,9 @@ return [
     |
     | The default dimensions for the vectors. This is used when creating
     | vectors, if not specified otherwise. The default is 1536, which is
-    | the size of the OpenAI text-embedding-3-small model.
+    | the size of the OpenAI text-embedding-3-small model. It must match
+    | what the embedding model returns (e.g. at most 1024 for
+    | qwen3-embedding:0.6b) - a mismatch throws instead of storing it.
     |
     | For clustering, there is no need to have such big vectors, so a
     | smaller dimension vector is created for clustering use. This will make for
@@ -57,7 +109,7 @@ return [
     | - 'chunked_aggregation': Aggregating mean chunks of the vector into a new one.
     | - 'pca': Principal Component Analysis, RPM, but PCA when total vectors are more than 10,000. TODO: NOT YET IMPLEMENTED. NEED PYTHON.
     */
-    'default_dimensions' => 1536, // Default dimensions for vectors
+    'default_dimensions' => (int) env('VECTOR_LITE_DEFAULT_DIMENSIONS', 1536), // Default dimensions for vectors
     'use_clustering_dimensions' => true, // Use clustering dimensions for clustering
     'reduction_method' => ReduceBy::RPM, // Method to reduce dimensions for clustering
     'clustering_dimensions' => 64, // Default dimensions for clustering vectors

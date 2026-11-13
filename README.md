@@ -72,11 +72,15 @@ composer require thakladd/vector-lite
 php artisan vendor:publish --tag="vector-lite-config"
 ```
 
-### 4. Optional: Add the OpenAI API key to your .env file
+### 4. Optional: Configure an embedding provider
+
+To have vectors created for you, either add an OpenAI API key to your .env file:
 
 ```env
 OPENAI_API_KEY=your-openai-api-key
 ```
+
+or point vector-lite at a local model, such as one served by Ollama - see [Embedding providers](#embedding-providers).
 
 ## Config file
 
@@ -87,10 +91,21 @@ return [
     'similarity_alias' => 'similarity',
     'vector_column' => 'vector',
     'embed_hash_column' => 'embed_hash',
+    'embeddings' => [
+        'url' => env('VECTOR_LITE_EMBEDDINGS_URL', 'https://api.openai.com/v1/'),
+        'api_key' => env('VECTOR_LITE_EMBEDDINGS_API_KEY'),
+        'model' => env('VECTOR_LITE_EMBEDDINGS_MODEL', 'text-embedding-3-small'),
+        'timeout' => (int) env('VECTOR_LITE_EMBEDDINGS_TIMEOUT', 60),
+        'send_dimensions' => env('VECTOR_LITE_EMBEDDINGS_SEND_DIMENSIONS', true),
+        'query_prefix' => env('VECTOR_LITE_EMBEDDINGS_QUERY_PREFIX', ''),
+        'document_prefix' => env('VECTOR_LITE_EMBEDDINGS_DOCUMENT_PREFIX', ''),
+        'on_error' => env('VECTOR_LITE_EMBEDDINGS_ON_ERROR', 'throw'),
+        'providers' => [],
+    ],
     'openai' => [
         'api_key' => env('OPENAI_API_KEY'),
     ],
-    'default_dimensions' => 1536,
+    'default_dimensions' => (int) env('VECTOR_LITE_DEFAULT_DIMENSIONS', 1536),
     'use_clustering_dimensions' => true,
     'reduction_method' => \ThaKladd\VectorLite\Enums\ReduceBy::RPM,
     'clustering_dimensions' => 64,
@@ -134,7 +149,7 @@ In practice, it will add `'vector'`, `'vector_hash'`, `'vector_norm'` columns to
 
 ### And, then, how to use?
 
-Nothing will happen until you actually add a vector to the model. You can do this on creation, or later. The choice of how is up to you, but adding a OpenAi key (as the only supported embedding model so far is their text-embedding-3-small), and use the provided `EmbeddingService` class. If you set the `$embedFields` (see below) you can use the `$vectorModel->getEmbeddingText()` method that builds a pseudo-xml of the text you want to make a vector for. Then, you use it with the EmbeddingService to get the vector to set: `$vectorModel->vector = EmbeddingService::createEmbedding($vectorModel->getEmbeddingText())` and then save the model to cluster it if you use clustering. There is a shortcut for this with `$vectorModel->vector = $vectorModel->createEmbedding()` or even simpler `$vectorModel->createAndFillEmbedding()->save()`.
+Nothing will happen until you actually add a vector to the model. You can do this on creation, or later. The choice of how is up to you, but the simplest is to configure an [embedding provider](#embedding-providers) (OpenAI, or a local model through Ollama and other OpenAI-compatible servers) and use the provided `EmbeddingService` class. If you set the `$embedFields` (see below) you can use the `$vectorModel->getEmbeddingText()` method that builds a pseudo-xml of the text you want to make a vector for. Then, you use it with the EmbeddingService to get the vector to set: `$vectorModel->vector = EmbeddingService::createEmbedding($vectorModel->getEmbeddingText())` and then save the model to cluster it if you use clustering. There is a shortcut for this with `$vectorModel->vector = $vectorModel->createEmbedding()` or even simpler `$vectorModel->createAndFillEmbedding()->save()`.
 
 ## Methods
 
@@ -146,9 +161,9 @@ The HasVector trait adds both methods and some other functionality to your model
 
 Note: The model may be slower to save, as it needs to get the embedding and calculate the cluster for the vector. But don't worry, it will only recalculate cluster when the vector is changed.
 
-The most important is the setting of the vector attribute. Whatever your columns are named, user the `$model->vector` to set a vector created by an embedding ai model. If you have set up `$embedFields` and a openai key, this should work automatically and there is no need to set the vector. If a similarity is calculated, you can access it with `$model->similarity`.
+The most important is the setting of the vector attribute. Whatever your columns are named, user the `$model->vector` to set a vector created by an embedding ai model. If you have set up `$embedFields` and an embedding provider, this should work automatically and there is no need to set the vector. If a similarity is calculated, you can access it with `$model->similarity`.
 
-There is also a method called `$model->createEmbedding($text, 1536)` for creating the embedding.
+There is also a method called `$model->createEmbedding($text)` for creating the embedding (of `$text`, or of the model's embedding text when omitted). It returns `null` when there is no text or no embedding provider is configured, and `$model->hasStaleEmbedding()` tells whether the stored vector is out of date.
 
 In addition, if you have made a cluster then you get it with the `$model->cluster` relationship, unless you make your own. Also, in order to find the best clusters `$model->getBestClusters(3)`.
 
@@ -215,6 +230,83 @@ All of them are used within VectorLite but is also available to use.
 ```php
 use ThaKladd\VectorLite\VectorLite;
 ```
+
+## Embedding providers
+
+vector-lite embeds text through any server with an OpenAI-style `POST /v1/embeddings` endpoint: OpenAI itself (the default), [Ollama](https://ollama.com), LM Studio, llama.cpp, vLLM or Text Embeddings Inference. Everything that embeds goes through that one configured endpoint: models with `$embedFields`, `Embeddings::for()`, `Str::toEmbeddings()`, reranking, text searches like `whereVectorSimilarTo('embedding', 'some text')`, and the `new_embedding` clustering reduction.
+
+With nothing configured it behaves as before: OpenAI `text-embedding-3-small` at 1536 dimensions, with `OPENAI_API_KEY`.
+
+| Env variable | Default | |
+| --- | --- | --- |
+| `VECTOR_LITE_EMBEDDINGS_URL` | `https://api.openai.com/v1/` | Base URL, or the full `.../v1/embeddings` endpoint. |
+| `VECTOR_LITE_EMBEDDINGS_API_KEY` | none | Sent as a Bearer token. Local servers need none. For OpenAI it falls back to `OPENAI_API_KEY` - that key is never sent to any other host. |
+| `VECTOR_LITE_EMBEDDINGS_MODEL` | `text-embedding-3-small` | |
+| `VECTOR_LITE_DEFAULT_DIMENSIONS` | `1536` | Must match what the model returns; a vector of any other length throws an `EmbeddingException` instead of being stored. |
+| `VECTOR_LITE_EMBEDDINGS_SEND_DIMENSIONS` | `true` | Sends the dimensions with each request. Turn it off for models that reject the field. |
+| `VECTOR_LITE_EMBEDDINGS_QUERY_PREFIX` | empty | Prepended to search queries. |
+| `VECTOR_LITE_EMBEDDINGS_DOCUMENT_PREFIX` | empty | Prepended to stored documents. |
+| `VECTOR_LITE_EMBEDDINGS_TIMEOUT` | `60` | Seconds per request. |
+| `VECTOR_LITE_EMBEDDINGS_ON_ERROR` | `throw` | What saving a model does when the provider fails: `throw` or `skip` (see [below](#when-the-embedding-server-is-down)). |
+
+### Local models (Ollama)
+
+[`qwen3-embedding:0.6b`](https://huggingface.co/Qwen/Qwen3-Embedding-0.6B) is a small multilingual retrieval model with 1024 dimensions, which can be shortened to anything from 32 to 1024.
+
+```bash
+ollama pull qwen3-embedding:0.6b
+```
+
+```env
+VECTOR_LITE_EMBEDDINGS_URL=http://<ollama-host>:11434/v1/
+VECTOR_LITE_EMBEDDINGS_MODEL=qwen3-embedding:0.6b
+VECTOR_LITE_DEFAULT_DIMENSIONS=1024
+VECTOR_LITE_EMBEDDINGS_QUERY_PREFIX="Instruct: Given a web search query, retrieve relevant passages that answer the query\nQuery:"
+```
+
+No API key is needed. Keep the double quotes around the prefix: they turn `\n` into a real newline.
+
+If you published the config file before 0.5.0, it has its own hard-coded `'default_dimensions' => 1536`, which wins over `VECTOR_LITE_DEFAULT_DIMENSIONS`. Change it there, or replace it with the `env()` call shown in [Config file](#config-file). The `embeddings` block itself comes from the package defaults, so it doesn't need publishing.
+
+- **Query and document prefixes.** Retrieval models are asymmetric. Qwen3-Embedding wants a one-sentence instruction on queries and nothing on documents, in exactly the form `Instruct: {task}\nQuery:{query}`, with no space after `Query:` (see its [model card](https://huggingface.co/Qwen/Qwen3-Embedding-0.6B)). [EmbeddingGemma 2](https://ai.google.dev/gemma/docs/embeddinggemma/model_card_2) prompts both sides:
+
+  ```env
+  VECTOR_LITE_EMBEDDINGS_QUERY_PREFIX="task: search result | query: "
+  VECTOR_LITE_EMBEDDINGS_DOCUMENT_PREFIX="title: none | text: "
+  ```
+
+  Model embeddings and the `new_embedding` reduction are documents. Text passed to the query builder (`whereVectorSimilarTo()` and friends) is a query. Reranking embeds the query as a query and the candidates as documents, in one request. `Embeddings::for()` embeds documents unless you call `->asQuery()`.
+- **Dimensions.** 1024 is the model's full size; a smaller value (say 512) halves storage, since Ollama honours the requested dimensions. If a server can't shorten its output, set `VECTOR_LITE_EMBEDDINGS_SEND_DIMENSIONS=false` and `VECTOR_LITE_DEFAULT_DIMENSIONS` to the model's native size.
+- **Keep Ollama's context small.** Its memory use grows with the context length times `OLLAMA_NUM_PARALLEL`, and OpenAI-style requests can't set `num_ctx`. Set it on the server instead, either `OLLAMA_CONTEXT_LENGTH=2048 ollama serve` or a Modelfile with `PARAMETER num_ctx 2048`. Size it to your longest embedding text: by default, Ollama truncates input that doesn't fit.
+
+### One embedding model per vector column
+
+Vectors from different models live in different spaces, and comparing them gives meaningless scores. The same goes for different dimensions or document prefixes. So a vector column holds vectors from exactly one model, and vector-lite deliberately has no automatic fallback from one model to another.
+
+To enforce that, each row's `embed_hash` covers the embedding text *and* the settings that shape the vector: model, dimensions and document prefix. The endpoint URL isn't part of it, so moving a server doesn't invalidate anything. Change one of those settings and every row reads as stale (`$model->hasStaleEmbedding()`).
+
+### Switching models
+
+1. Change the config: model, `VECTOR_LITE_DEFAULT_DIMENSIONS`, prefixes. If you sized the vector columns with `vectorLite('vector', dimensions: ...)`, make sure the new size fits.
+2. Re-embed every row and rebuild the clusters:
+
+   ```bash
+   php artisan vector-lite:reembed "App\Models\Link" --chunk=100
+   ```
+
+The command sends one request per chunk and shows a progress bar. When it's done it rebuilds the model's clusters from scratch, because the old cluster vectors are in the old model's space. Use `--only-stale` to skip rows that are already up to date, for example to resume after a failure. Without the command, rows re-embed one by one as they are saved.
+
+Until it finishes, old and new vectors are mixed. A pair of vectors with different lengths is never scored: it gets a similarity of `-1`, both in SQL (`COSIM`/`COSIM_CACHE`) and in PHP, so such rows sort last and fail any threshold. A new model with the *same* dimensions can't be detected that way, so re-embed before trusting search results.
+
+### When the embedding server is down
+
+By default (`on_error = throw`) a failed embedding aborts the save, as before. With `VECTOR_LITE_EMBEDDINGS_ON_ERROR=skip` the error is reported and the model is saved anyway. A new model gets no vector; an edited one keeps its previous vector. Either way `embed_hash` is left stale, so the next save tries again, or you can catch up in bulk without rebuilding every cluster:
+
+```bash
+php artisan vector-lite:reembed "App\Models\Link" --only-stale --keep-clusters
+```
+
+Note that rows saved only once also count as stale: the embedding text includes the row's id, which doesn't exist yet when a new model is first embedded. The next save (or the command) embeds them once more.
 
 ## Laravel 13 / AI SDK compatibility
 
@@ -284,9 +376,16 @@ $response = Embeddings::for(['Napa Valley has great wine.'])->cache(seconds: 360
 $response->embeddings; // [[0.123, 0.456, ...]]
 
 $embedding = Str::of('Napa Valley has great wine.')->toEmbeddings(cache: true);
+
+// Search text: embedded with the query prefix instead of the document prefix
+$query = Embeddings::for(['wineries in Napa'])->asQuery()->generate()->embeddings[0];
+
+// Another endpoint or model for one call ("openai" is built in; others go in
+// vector-lite.embeddings.providers)
+Embeddings::for(['Napa Valley has great wine.'])->generate('ollama', 'qwen3-embedding:0.6b');
 ```
 
-Backed by vector-lite's own `EmbeddingService` (OpenAI), not `laravel/ai`'s multi-provider client. Caching is configured under `vector-lite.caching.embeddings` in the config file (`cache`, `store`, `ttl`), mirroring the shape of `config('ai.caching.embeddings')`.
+Backed by vector-lite's own `EmbeddingService` (the configured [embedding provider](#embedding-providers)), not `laravel/ai`'s multi-provider client. `generate($provider, $model)` takes the same arguments as the AI SDK's. A provider names an entry in `vector-lite.embeddings.providers`, and an unknown one throws rather than silently using a different model. Lists of providers for failover aren't supported. Caching is configured under `vector-lite.caching.embeddings` in the config file (`cache`, `store`, `ttl`), mirroring the shape of `config('ai.caching.embeddings')`. Entries are keyed on the model, dimensions, input type and text.
 
 ### Reranking
 
@@ -302,7 +401,7 @@ $response->first()->index;
 $posts->rerank('body', 'Laravel tutorials');
 ```
 
-vector-lite has no dedicated reranker model (the AI SDK uses Cohere/Jina/VoyageAI). This scores documents by cosine similarity between embeddings of the query and each document - a reasonable standalone approximation, but not a cross-encoder reranker, so scores won't match a real reranker numerically.
+vector-lite has no dedicated reranker model (the AI SDK uses Cohere/Jina/VoyageAI). This scores documents by cosine similarity between embeddings of the query and each document - a reasonable standalone approximation, but not a cross-encoder reranker, so scores won't match a real reranker numerically. The query and the documents get their own prefixes and go out in one request. The `provider` argument is accepted for AI SDK compatibility but ignored, since it names a reranking service rather than an embedding endpoint.
 
 ### SimilaritySearch
 

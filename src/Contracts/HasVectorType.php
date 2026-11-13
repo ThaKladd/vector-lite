@@ -47,7 +47,7 @@ interface HasVectorType
 
     public function models(): HasMany;
 
-    public function createEmbedding(): array;
+    public function createEmbedding(?string $text = null): ?array;
 
     public function createAndFillEmbedding(): static;
 

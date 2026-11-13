@@ -3,6 +3,7 @@
 namespace ThaKladd\VectorLite;
 
 use Illuminate\Support\Collection;
+use ThaKladd\VectorLite\Enums\EmbeddingInputType;
 use ThaKladd\VectorLite\Services\EmbeddingService;
 use ThaKladd\VectorLite\Support\RerankedDocument;
 
@@ -13,6 +14,9 @@ use ThaKladd\VectorLite\Support\RerankedDocument;
  * and each document (via the existing EmbeddingService) - an embedding-cosine
  * reranking, not a cross-encoder reranker; scores won't match a real reranker
  * numerically, but ordering is a reasonable standalone approximation.
+ *
+ * The query is embedded as a query and the documents as documents (their
+ * own prefixes, see vector-lite.embeddings), in one batched request.
  */
 final class Reranking
 {
@@ -41,17 +45,23 @@ final class Reranking
     /**
      * $provider is accepted (and ignored) purely so calls written against
      * Laravel's AI SDK - e.g. ->rerank('query', provider: Lab::Cohere) -
-     * don't error out standalone.
+     * don't error out standalone. Those name reranker services, not
+     * embedding endpoints, so the configured embedding endpoint is used.
      *
      * @return Collection<int, RerankedDocument>
      */
     public function rerank(string $query, mixed $provider = null): Collection
     {
         $documents = array_values($this->documents);
-        $dimensions = config('vector-lite.default_dimensions');
+        if ($documents === []) {
+            return collect();
+        }
 
-        $service = app(EmbeddingService::class);
-        $allEmbeddings = array_column($service->createEmbeddings([$query, ...$documents], $dimensions), 'embedding');
+        $types = [EmbeddingInputType::Query, ...array_fill(0, count($documents), EmbeddingInputType::Document)];
+        $allEmbeddings = array_column(
+            app(EmbeddingService::class)->createEmbeddings([$query, ...$documents], null, $types),
+            'embedding'
+        );
         [$queryEmbedding, $documentEmbeddings] = [$allEmbeddings[0], array_slice($allEmbeddings, 1)];
         [$normalizedQuery] = VectorLite::normalize($queryEmbedding);
 

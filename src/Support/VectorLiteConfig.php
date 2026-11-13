@@ -8,7 +8,7 @@ class VectorLiteConfig
 {
     private static ?self $instance = null;
 
-    public readonly string $cacheDriver;
+    public readonly ?string $cacheDriver;
 
     public readonly int $cacheTime;
 
@@ -38,10 +38,14 @@ class VectorLiteConfig
 
     private function __construct()
     {
-        static $config = null;
-        $config ??= config('vector-lite');
+        // Read fresh on every construction - reset() is how callers (and
+        // tests) pick up config changes, so this must not be memoized.
+        $config = config('vector-lite');
 
-        $this->cacheDriver = $config['cache_driver'] ?? 'file';
+        // false/'' (the shipped default) means "no persistent cache store" -
+        // normalized to null so it's never passed on as Cache::store(''),
+        // which Laravel 13.42+ rejects instead of falling back to the default store.
+        $this->cacheDriver = ($config['cache_driver'] ?? null) ?: null;
         $this->cacheTime = $config['cache_time'] ?? 3600;
         $this->useClusteringDimensions = $config['use_clustering_dimensions'] ?? false;
         $this->clusteringDimensions = $config['clustering_dimensions'] ?? 384;

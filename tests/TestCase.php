@@ -5,9 +5,13 @@ namespace ThaKladd\VectorLite\Tests;
 use Dotenv\Dotenv;
 use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use Orchestra\Testbench\TestCase as Orchestra;
+use ThaKladd\VectorLite\Support\ClusterCache;
+use ThaKladd\VectorLite\Support\VectorLiteConfig;
+use ThaKladd\VectorLite\VectorLite;
 use ThaKladd\VectorLite\VectorLiteServiceProvider;
 
 class TestCase extends Orchestra
@@ -15,6 +19,12 @@ class TestCase extends Orchestra
     protected function setUp(): void
     {
         parent::setUp();
+        // No test may reach a real embedding server - fake it (see VectorTestHelpers).
+        Http::preventStrayRequests();
+        // Static state must not leak between (randomly ordered) tests.
+        VectorLiteConfig::reset();
+        ClusterCache::reset();
+        VectorLite::reset();
         $this->setUpDatabase();
         Factory::guessFactoryNamesUsing(
             fn (string $model) => 'ThaKladd\\VectorLite\\Database\\Factories\\'.class_basename($model).'Factory'

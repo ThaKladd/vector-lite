@@ -6,6 +6,10 @@ on:
       - "**.php"
       - "phpstan.neon.dist"
       - ".github/workflows/phpstan.yml"
+  pull_request:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 4 * * 1"
 
 jobs:
   phpstan:

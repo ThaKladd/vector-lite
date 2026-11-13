@@ -23,6 +23,17 @@ it('wraps a single model, an iterable, or null into a VectorModelCollection', fu
     expect(VectorModelCollection::wrap([$vectorModel, $vectorModel]))->toHaveCount(2);
 });
 
+it('accepts the extra wrap() arguments Laravel 13.42 added to Collection::wrap($value, ...$args)', function () {
+    $this->fillVectorTable(2, 36);
+    $vectorModel = Vector::query()->first();
+
+    $wrapped = VectorModelCollection::wrap($vectorModel, 'extra', 'arguments');
+
+    expect($wrapped)->toBeInstanceOf(VectorModelCollection::class);
+    expect($wrapped)->toHaveCount(1);
+    expect((new ReflectionMethod(VectorModelCollection::class, 'wrap'))->isVariadic())->toBeTrue();
+});
+
 it('annotates every item with a similarity via withSimilarities()', function () {
     $this->fillVectorTable(10, 36);
     $vectorModel = Vector::query()->first();

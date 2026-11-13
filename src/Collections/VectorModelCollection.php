@@ -148,11 +148,16 @@ class VectorModelCollection extends Collection
     /**
      * Wraps the given value in a VectorModelCollection.
      *
+     * Laravel 13.42 changed the parent signature to wrap($value, ...$args);
+     * older releases take only $value. Declaring the variadic keeps this
+     * override compatible with both (PHP ignores extra arguments passed to
+     * a userland parent that doesn't declare them).
+     *
      * @param  TModel|iterable<TModel>|null  $value
      * @return self<TModel>
      */
-    public static function wrap($value): self
+    public static function wrap($value, ...$args): self
     {
-        return new self(parent::wrap($value)->all());
+        return new self(parent::wrap($value, ...$args)->all());
     }
 }

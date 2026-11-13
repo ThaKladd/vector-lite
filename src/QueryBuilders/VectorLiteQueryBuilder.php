@@ -5,6 +5,7 @@ namespace ThaKladd\VectorLite\QueryBuilders;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\Schema;
 use ThaKladd\VectorLite\Collections\VectorModelCollection;
+use ThaKladd\VectorLite\Enums\EmbeddingInputType;
 use ThaKladd\VectorLite\Models\VectorModel;
 use ThaKladd\VectorLite\Services\EmbeddingService;
 use ThaKladd\VectorLite\Support\SqlValidator;
@@ -207,7 +208,8 @@ class VectorLiteQueryBuilder extends Builder
      * below. Unlike the rest of this query builder (whereVector(),
      * bestByVector(), etc.), where a string means an already-packed binary
      * vector, a string here is treated as natural-language text to embed —
-     * matching Laravel's AI SDK whereVectorSimilarTo() semantics.
+     * matching Laravel's AI SDK whereVectorSimilarTo() semantics. It's
+     * embedded as a search query (vector-lite.embeddings.query_prefix).
      */
     protected function resolveEmbeddingInput(array|string $embedding): array
     {
@@ -215,7 +217,7 @@ class VectorLiteQueryBuilder extends Builder
             return $embedding;
         }
 
-        return app(EmbeddingService::class)->createEmbedding($embedding, config('vector-lite.default_dimensions'));
+        return app(EmbeddingService::class)->createEmbedding($embedding, null, EmbeddingInputType::Query);
     }
 
     /**
@@ -467,7 +469,7 @@ class VectorLiteQueryBuilder extends Builder
         $model = $this->resolveModel();
         if ($this->shouldUseSimilarityAlias($vector)) {
             // If the similarity column is already selected, use it in the ORDER BY clause.
-            $this->orderBy($model::similarityAlias(), $direction);
+            $this->orderBy($model::similarityAlias(), $direction === 'ASC' ? 'asc' : 'desc');
 
             return $this;
         }

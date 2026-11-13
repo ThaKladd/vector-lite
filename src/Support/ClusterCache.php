@@ -91,8 +91,10 @@ class ClusterCache
 
     public function persist(): void
     {
-        $this->objects
-            ->filter(fn ($object) => $object->isDirty())
-            ->each->save();
+        foreach ($this->objects ?? [] as $object) {
+            if ($object->isDirty()) {
+                $object->save();
+            }
+        }
     }
 }

@@ -52,20 +52,40 @@ enum ReduceBy: string
         return $reducedVector;
     }
 
+    /**
+     * A second, smaller embedding of the same document text, through the same
+     * configured endpoint (and document prefix) as the full vector.
+     */
     private function createNewEmbedding(string $input, int $toDimensions): array
     {
         $embeddingService = app(EmbeddingService::class);
 
-        return $embeddingService->createEmbedding($input, $toDimensions);
+        return $embeddingService->createEmbedding($input, $toDimensions, EmbeddingInputType::Document);
     }
 
+    /**
+     * The projection matrix for one (input, output) dimension pair, cached on
+     * disk so every vector of that size is projected the same way. A vector
+     * of another length (e.g. after switching embedding models) gets its own
+     * matrix and file - never a stale one - and a cached file whose shape
+     * doesn't match the pair is regenerated rather than used.
+     */
     private function generateRandomMatrix(int $outputDim, int $inputDim): array
     {
+        static $matrices = [];
+
         $fileName = "random_project_{$inputDim}_{$outputDim}.json";
         $filePath = storage_path("app/{$fileName}");
 
+        if (isset($matrices[$filePath])) {
+            return $matrices[$filePath];
+        }
+
         if (file_exists($filePath)) {
-            return json_decode(file_get_contents($filePath), true);
+            $matrix = json_decode((string) file_get_contents($filePath), true);
+            if (self::matrixHasShape($matrix, $outputDim, $inputDim)) {
+                return $matrices[$filePath] = $matrix;
+            }
         }
 
         $matrix = [];
@@ -80,6 +100,21 @@ enum ReduceBy: string
 
         file_put_contents($filePath, json_encode($matrix));
 
-        return $matrix;
+        return $matrices[$filePath] = $matrix;
+    }
+
+    private static function matrixHasShape(mixed $matrix, int $rows, int $columns): bool
+    {
+        if (! is_array($matrix) || count($matrix) !== $rows) {
+            return false;
+        }
+
+        foreach ($matrix as $row) {
+            if (! is_array($row) || count($row) !== $columns) {
+                return false;
+            }
+        }
+
+        return true;
     }
 }

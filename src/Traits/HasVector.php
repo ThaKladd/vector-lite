@@ -9,6 +9,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
+use ThaKladd\VectorLite\Exceptions\EmbeddingException;
 use ThaKladd\VectorLite\Models\VectorModel;
 use ThaKladd\VectorLite\QueryBuilders\VectorLiteQueryBuilder;
 use ThaKladd\VectorLite\Support\VectorLiteConfig;
@@ -59,7 +60,16 @@ trait HasVector
             }
             if (! empty($model->embedFields)) {
                 // Update embedding hash column and create new embedding if changed.
-                $model->createAndFillEmbedding();
+                try {
+                    $model->createAndFillEmbedding();
+                } catch (EmbeddingException $exception) {
+                    // on_error = "skip": save without the new vector. Nothing was
+                    // written to embed_hash, so the row stays stale and is retried.
+                    if (config('vector-lite.embeddings.on_error', 'throw') !== 'skip') {
+                        throw $exception;
+                    }
+                    report($exception);
+                }
             }
         });
 

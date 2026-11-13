@@ -14,3 +14,8 @@ parameters:
         - %currentWorkingDirectory%/phpstan/Blueprint.php
     ignoreErrors:
         - "#Called 'env' outside of the config directory which returns null when the config is cached, use 'config'#"
+        # Same as phpstan-ci.neon.dist: the Blueprint macros calling each other inside their own closures.
+        - message: '#Call to an undefined method Illuminate\\Database\\Schema\\Blueprint::vectorLiteColumns\(\)#'
+          path: src/VectorLiteServiceProvider.php
+        - message: '#Call to an undefined method Illuminate\\Database\\Schema\\Blueprint::dropVectorLiteColumns\(\)#'
+          path: src/VectorLiteServiceProvider.php

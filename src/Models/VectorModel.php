@@ -7,10 +7,11 @@ use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Support\Collection;
 use ThaKladd\VectorLite\Collections\VectorModelCollection;
 use ThaKladd\VectorLite\Contracts\HasVectorType;
+use ThaKladd\VectorLite\Enums\EmbeddingInputType;
+use ThaKladd\VectorLite\Exceptions\EmbeddingException;
 use ThaKladd\VectorLite\QueryBuilders\VectorLiteQueryBuilder;
 use ThaKladd\VectorLite\Services\EmbeddingService;
 use ThaKladd\VectorLite\Traits\HasVector;
-use ThaKladd\VectorLite\VectorLite;
 
 abstract class VectorModel extends Model implements HasVectorType
 {
@@ -233,39 +234,93 @@ abstract class VectorModel extends Model implements HasVectorType
     }
 
     /**
-     * Creates an embedding, from the models embedding text
+     * The fields/relations/methods this model's embedding text is built from.
      */
-    public function createEmbedding(?string $text = null): array
+    public function getEmbedFields(): array
     {
-        $text = $text ?? $this->getEmbeddingText();
-        $dimensions = config('vector-lite.default_dimensions');
-        $embeddingServiceKey = config('vector-lite.openai.api_key');
-        $embedding = null;
-        if ($text) {
-            if ($embeddingServiceKey && $dimensions) {
-                $embeddingService = app(EmbeddingService::class);
-                $embedding = $embeddingService->createEmbedding($text, $dimensions);
-            }
-        }
-
-        return $embedding;
+        return $this->embedFields;
     }
 
     /**
-     * Creates the embeddings, and adds it to the model
-     * together with reduced model if activated
+     * Creates a document embedding from the model's embedding text (or $text).
+     * Returns null, without calling out, when there is no text or no
+     * embedding provider is configured (OpenAI without an API key).
+     *
+     * @throws EmbeddingException when the provider fails or returns an invalid vector
+     */
+    public function createEmbedding(?string $text = null): ?array
+    {
+        return $this->embedText(app(EmbeddingService::class), $text ?? $this->getEmbeddingText());
+    }
+
+    /**
+     * The embed_hash this model should have for its current embedding text
+     * under the current embedding settings (model, dimensions, document
+     * prefix) - see EmbeddingConfig::embedHash().
+     */
+    public function embeddingHash(?string $text = null, ?EmbeddingService $service = null): string
+    {
+        $service ??= app(EmbeddingService::class);
+
+        return $service->config()->embedHash($text ?? $this->getEmbeddingText());
+    }
+
+    /**
+     * Whether the stored vector is out of date: its text changed, or it was
+     * embedded with other settings, or embedding it failed earlier.
+     */
+    public function hasStaleEmbedding(): bool
+    {
+        return $this->{static::embedHashColumn()} !== $this->embeddingHash();
+    }
+
+    /**
+     * Creates the embedding and fills it into the model (together with the
+     * reduced clustering vector, if enabled) - only when the embedding text
+     * or the embedding settings changed since the stored embed_hash.
+     *
+     * embed_hash and the vector are written together, and only after a
+     * successful, valid embedding. If there's no provider, no text, or the
+     * provider throws, neither is touched, so the row stays stale and the
+     * next attempt retries it.
+     *
+     * @throws EmbeddingException
      */
     public function createAndFillEmbedding(): static
     {
+        $service = app(EmbeddingService::class);
         $text = $this->getEmbeddingText();
-        $hash = VectorLite::hashText($text);
+        $hash = $this->embeddingHash($text, $service);
 
-        // Only create fill vector if hash has changed
-        if ($this->{self::embedHashColumn()} !== $hash) {
-            $this->{self::embedHashColumn()} = $hash;
-            $this->{self::vectorColumn()} = $this->createEmbedding($text);
+        if ($this->{static::embedHashColumn()} === $hash) {
+            return $this;
+        }
+
+        $embedding = $this->embedText($service, $text);
+        if (! empty($embedding)) {
+            $this->fillEmbedding($embedding, $hash);
         }
 
         return $this;
+    }
+
+    /**
+     * Sets the vector and its embed_hash together.
+     */
+    public function fillEmbedding(array $embedding, ?string $hash = null): static
+    {
+        $this->{static::vectorColumn()} = $embedding;
+        $this->{static::embedHashColumn()} = $hash ?? $this->embeddingHash();
+
+        return $this;
+    }
+
+    protected function embedText(EmbeddingService $service, string $text): ?array
+    {
+        if ($text === '' || ! $service->isConfigured()) {
+            return null;
+        }
+
+        return $service->createEmbedding($text, $service->config()->dimensions, EmbeddingInputType::Document);
     }
 }

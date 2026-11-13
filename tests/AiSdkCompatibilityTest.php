@@ -3,6 +3,7 @@
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
 use ThaKladd\VectorLite\Embeddings;
 use ThaKladd\VectorLite\Reranking;
@@ -82,14 +83,7 @@ it('fixes whereVector()/whereVectorBetween() to accept a model instance without 
     VectorLiteConfig::reset();
     ClusterCache::reset();
 
-    $mockEmbeddingService = Mockery::mock(EmbeddingService::class);
-    $mockEmbeddingService
-        ->shouldReceive('createEmbedding')
-        ->with(Mockery::type('string'), Mockery::type('int'))
-        ->andReturnUsing(function ($text, $dim) {
-            return $this->createVectorArray($dim);
-        });
-    $this->app->instance(EmbeddingService::class, $mockEmbeddingService);
+    $this->fakeEmbeddingApi();
 
     $this->fillVectorTable(5, 36);
     $vectorModel = Vector::query()->first();
@@ -119,74 +113,53 @@ it('caches embeddings via Embeddings::for()->cache() and reuses them on the next
     VectorLiteConfig::reset();
     config()->set('cache.stores.array', ['driver' => 'array']);
     config()->set('vector-lite.caching.embeddings.store', 'array');
+    $this->fakeEmbeddingVectors(['hello world' => [0.1, 0.2, 0.3]]);
 
-    $mockEmbeddingService = Mockery::mock(EmbeddingService::class);
-    $mockEmbeddingService->shouldReceive('setModel')->withAnyArgs();
-    $mockEmbeddingService
-        ->shouldReceive('createEmbeddings')
-        ->once()
-        ->andReturn([['embedding' => [0.1, 0.2, 0.3]]]);
-    $this->app->instance(EmbeddingService::class, $mockEmbeddingService);
-
-    $first = Embeddings::for(['hello world'])->cache()->generate()->embeddings[0];
-    $second = Embeddings::for(['hello world'])->cache()->generate()->embeddings[0];
+    $first = Embeddings::for(['hello world'])->dimensions(3)->cache()->generate()->embeddings[0];
+    $second = Embeddings::for(['hello world'])->dimensions(3)->cache()->generate()->embeddings[0];
 
     expect($first)->toBe([0.1, 0.2, 0.3]);
     expect($second)->toBe($first);
+    Http::assertSentCount(1);
 });
 
 it('generates embeddings via Str::toEmbeddings()', function () {
     VectorLiteConfig::reset();
     config()->set('vector-lite.caching.embeddings.cache', false);
-
-    $mockEmbeddingService = Mockery::mock(EmbeddingService::class);
-    $mockEmbeddingService->shouldReceive('setModel')->withAnyArgs();
-    $mockEmbeddingService
-        ->shouldReceive('createEmbeddings')
-        ->once()
-        ->with(['Napa Valley has great wine.'], Mockery::any())
-        ->andReturn([['embedding' => [0.4, 0.5]]]);
-    $this->app->instance(EmbeddingService::class, $mockEmbeddingService);
+    config()->set('vector-lite.default_dimensions', 2);
+    $this->fakeEmbeddingVectors(['Napa Valley has great wine.' => [0.4, 0.5]]);
 
     $embedding = Str::of('Napa Valley has great wine.')->toEmbeddings();
 
     expect($embedding)->toBe([0.4, 0.5]);
+    Http::assertSentCount(1);
 });
 
 it('reranks documents by cosine similarity to a query', function () {
     VectorLiteConfig::reset();
-
-    $mockEmbeddingService = Mockery::mock(EmbeddingService::class);
-    $mockEmbeddingService
-        ->shouldReceive('createEmbeddings')
-        ->once()
-        ->andReturn([
-            ['embedding' => [1, 0]], // query
-            ['embedding' => [0, 1]], // "unrelated text"
-            ['embedding' => [1, 0]], // "matching text"
-        ]);
-    $this->app->instance(EmbeddingService::class, $mockEmbeddingService);
+    config()->set('vector-lite.default_dimensions', 2);
+    $this->fakeEmbeddingVectors([
+        'query text' => [1, 0],
+        'unrelated text' => [0, 1],
+        'matching text' => [1, 0],
+    ]);
 
     $results = Reranking::of(['unrelated text', 'matching text'])->rerank('query text');
 
     expect($results->first()->document)->toBe('matching text');
     expect($results->first()->index)->toBe(1);
     expect($results->first()->score)->toBeGreaterThan($results->last()->score);
+    Http::assertSentCount(1);
 });
 
 it('reranks a plain collection via the ->rerank() macro', function () {
     VectorLiteConfig::reset();
-
-    $mockEmbeddingService = Mockery::mock(EmbeddingService::class);
-    $mockEmbeddingService
-        ->shouldReceive('createEmbeddings')
-        ->once()
-        ->andReturn([
-            ['embedding' => [1, 0]], // query
-            ['embedding' => [0, 1]], // post A
-            ['embedding' => [1, 0]], // post B
-        ]);
-    $this->app->instance(EmbeddingService::class, $mockEmbeddingService);
+    config()->set('vector-lite.default_dimensions', 2);
+    $this->fakeEmbeddingVectors([
+        'query text' => [1, 0],
+        'unrelated' => [0, 1],
+        'matching' => [1, 0],
+    ]);
 
     $posts = collect([
         ['title' => 'A', 'body' => 'unrelated'],
@@ -200,13 +173,8 @@ it('reranks a plain collection via the ->rerank() macro', function () {
 
 it('runs a similarity search via the SimilaritySearch tool', function () {
     VectorLiteConfig::reset();
-
-    $mockEmbeddingService = Mockery::mock(EmbeddingService::class);
-    $mockEmbeddingService
-        ->shouldReceive('createEmbedding')
-        ->with('find matching', Mockery::type('int'))
-        ->andReturn([1, 0, 0, 0]);
-    $this->app->instance(EmbeddingService::class, $mockEmbeddingService);
+    config()->set('vector-lite.default_dimensions', 4);
+    $this->fakeEmbeddingVectors(['find matching' => [1, 0, 0, 0]]);
 
     $match = new Document(['title' => 'match']);
     $match->embedding = [1, 0, 0, 0];
@@ -241,85 +209,69 @@ it('only fetches inputs that are not already cached from Embeddings::for()', fun
     VectorLiteConfig::reset();
     config()->set('cache.stores.array', ['driver' => 'array']);
     config()->set('vector-lite.caching.embeddings.store', 'array');
+    $this->fakeEmbeddingVectors([
+        'hello world' => [0.1, 0.2, 0.3],
+        'goodbye world' => [0.4, 0.5, 0.6],
+    ]);
 
-    $firstMock = Mockery::mock(EmbeddingService::class);
-    $firstMock->shouldReceive('setModel')->withAnyArgs();
-    $firstMock
-        ->shouldReceive('createEmbeddings')
-        ->once()
-        ->with(['hello world'], Mockery::any())
-        ->andReturn([['embedding' => [0.1, 0.2, 0.3]]]);
-    $this->app->instance(EmbeddingService::class, $firstMock);
-
-    Embeddings::for(['hello world'])->cache()->generate();
-
-    $secondMock = Mockery::mock(EmbeddingService::class);
-    $secondMock->shouldReceive('setModel')->withAnyArgs();
-    $secondMock
-        ->shouldReceive('createEmbeddings')
-        ->once()
-        ->with(['goodbye world'], Mockery::any())
-        ->andReturn([['embedding' => [0.4, 0.5, 0.6]]]);
-    $this->app->instance(EmbeddingService::class, $secondMock);
+    Embeddings::for(['hello world'])->dimensions(3)->cache()->generate();
 
     // "hello world" is already cached from the call above, so only
-    // "goodbye world" should be sent to the (new) mock's createEmbeddings().
-    $response = Embeddings::for(['hello world', 'goodbye world'])->cache()->generate();
+    // "goodbye world" should be sent in the second request.
+    $response = Embeddings::for(['hello world', 'goodbye world'])->dimensions(3)->cache()->generate();
 
     expect($response->embeddings[0])->toBe([0.1, 0.2, 0.3]);
     expect($response->embeddings[1])->toBe([0.4, 0.5, 0.6]);
+    expect($this->sentEmbeddingInputs())->toBe([['hello world'], ['goodbye world']]);
 });
 
 it('passes a custom timeout through Embeddings::timeout() to the EmbeddingService', function () {
     VectorLiteConfig::reset();
     config()->set('vector-lite.caching.embeddings.cache', false);
+    $this->fakeEmbeddingVectors(['hi' => [0.1]]);
 
-    $mockEmbeddingService = Mockery::mock(EmbeddingService::class);
-    $mockEmbeddingService->shouldReceive('setModel')->withAnyArgs();
-    $mockEmbeddingService->shouldReceive('setTimeout')->once()->with(5);
-    $mockEmbeddingService
-        ->shouldReceive('createEmbeddings')
-        ->once()
-        ->andReturn([['embedding' => [0.1]]]);
-    $this->app->instance(EmbeddingService::class, $mockEmbeddingService);
+    $service = new class extends EmbeddingService
+    {
+        public array $timeouts = [];
 
-    Embeddings::for(['hi'])->timeout(5)->generate();
+        public function setTimeout(int $seconds): void
+        {
+            $this->timeouts[] = $seconds;
+            parent::setTimeout($seconds);
+        }
+    };
+    $this->app->instance(EmbeddingService::class, $service);
+
+    Embeddings::for(['hi'])->dimensions(1)->timeout(5)->generate();
+
+    expect($service->timeouts)->toBe([5]);
+    expect($service->config()->timeout)->toBe(5);
 });
 
 it('caches an embedding generated via Str::toEmbeddings(cache: true)', function () {
     VectorLiteConfig::reset();
     config()->set('cache.stores.array', ['driver' => 'array']);
     config()->set('vector-lite.caching.embeddings.store', 'array');
-
-    $mockEmbeddingService = Mockery::mock(EmbeddingService::class);
-    $mockEmbeddingService->shouldReceive('setModel')->withAnyArgs();
-    $mockEmbeddingService
-        ->shouldReceive('createEmbeddings')
-        ->once()
-        ->andReturn([['embedding' => [0.7, 0.8]]]);
-    $this->app->instance(EmbeddingService::class, $mockEmbeddingService);
+    config()->set('vector-lite.default_dimensions', 2);
+    $this->fakeEmbeddingVectors(['cache me please' => [0.7, 0.8]]);
 
     $first = Str::toEmbeddings('cache me please', cache: true);
     $second = Str::toEmbeddings('cache me please', cache: true);
 
     expect($first)->toBe([0.7, 0.8]);
     expect($second)->toBe($first);
+    Http::assertSentCount(1);
 });
 
 it('limits reranked results via Reranking::limit()', function () {
     VectorLiteConfig::reset();
-
-    $mockEmbeddingService = Mockery::mock(EmbeddingService::class);
-    $mockEmbeddingService
-        ->shouldReceive('createEmbeddings')
-        ->once()
-        ->andReturn([
-            ['embedding' => [1, 0]], // query
-            ['embedding' => [1, 0]], // "closest"
-            ['embedding' => [0.9, 0.1]], // "second"
-            ['embedding' => [0, 1]], // "furthest"
-        ]);
-    $this->app->instance(EmbeddingService::class, $mockEmbeddingService);
+    config()->set('vector-lite.default_dimensions', 2);
+    $this->fakeEmbeddingVectors([
+        'query text' => [1, 0],
+        'closest' => [1, 0],
+        'second' => [0.9, 0.1],
+        'furthest' => [0, 1],
+    ]);
 
     $results = Reranking::of(['closest', 'second', 'furthest'])->limit(2)->rerank('query text');
 
@@ -329,17 +281,14 @@ it('limits reranked results via Reranking::limit()', function () {
 
 it('reranks via the ->rerank() macro using an array of fields or a closure extractor', function () {
     VectorLiteConfig::reset();
-
-    $mockEmbeddingService = Mockery::mock(EmbeddingService::class);
-    $mockEmbeddingService
-        ->shouldReceive('createEmbeddings')
-        ->twice()
-        ->andReturn([
-            ['embedding' => [1, 0]], // query
-            ['embedding' => [0, 1]], // post A ("unrelated")
-            ['embedding' => [1, 0]], // post B ("matching")
-        ]);
-    $this->app->instance(EmbeddingService::class, $mockEmbeddingService);
+    config()->set('vector-lite.default_dimensions', 2);
+    $this->fakeEmbeddingVectors([
+        'query text' => [1, 0],
+        'A unrelated' => [0, 1], // fields: title + body
+        'B matching' => [1, 0],
+        'unrelated' => [0, 1], // closure: body only
+        'matching' => [1, 0],
+    ]);
 
     $posts = collect([
         ['title' => 'A', 'body' => 'unrelated'],
@@ -351,6 +300,8 @@ it('reranks via the ->rerank() macro using an array of fields or a closure extra
 
     $rerankedByClosure = $posts->rerank(fn ($post) => $post['body'], 'query text');
     expect($rerankedByClosure->first()['title'])->toBe('B');
+
+    Http::assertSentCount(2);
 });
 
 it('exposes a default and a customizable description on SimilaritySearch', function () {
@@ -364,13 +315,8 @@ it('exposes a default and a customizable description on SimilaritySearch', funct
 
 it('limits results and lets a custom query closure narrow the SimilaritySearch tool', function () {
     VectorLiteConfig::reset();
-
-    $mockEmbeddingService = Mockery::mock(EmbeddingService::class);
-    $mockEmbeddingService
-        ->shouldReceive('createEmbedding')
-        ->with('find matching', Mockery::type('int'))
-        ->andReturn([1, 0, 0, 0]);
-    $this->app->instance(EmbeddingService::class, $mockEmbeddingService);
+    config()->set('vector-lite.default_dimensions', 4);
+    $this->fakeEmbeddingVectors(['find matching' => [1, 0, 0, 0]]);
 
     $match = new Document(['title' => 'match']);
     $match->embedding = [1, 0, 0, 0];

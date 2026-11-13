@@ -2,7 +2,6 @@
 
 use Illuminate\Support\Facades\DB;
 use ThaKladd\VectorLite\QueryBuilders\VectorLiteQueryBuilder;
-use ThaKladd\VectorLite\Services\EmbeddingService;
 use ThaKladd\VectorLite\Support\ClusterCache;
 use ThaKladd\VectorLite\Support\VectorLiteConfig;
 use ThaKladd\VectorLite\Tests\Helpers\VectorTestHelpers;
@@ -120,14 +119,7 @@ it('orders ascending via orderBySimilarity() and validates the direction', funct
 });
 
 it('gets the closest clusters for a vector via getBestClustersByVector()', function () {
-    $mockEmbeddingService = Mockery::mock(EmbeddingService::class);
-    $mockEmbeddingService
-        ->shouldReceive('createEmbedding')
-        ->with(Mockery::type('string'), Mockery::type('int'))
-        ->andReturnUsing(function ($text, $dim) {
-            return $this->createVectorArray($dim);
-        });
-    $this->app->instance(EmbeddingService::class, $mockEmbeddingService);
+    $this->fakeEmbeddingApi();
 
     $this->fillVectorClusterTable(200, 36);
     $vectorModel = Vector::query()->first();

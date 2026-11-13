@@ -12,6 +12,8 @@ use Spatie\LaravelPackageTools\PackageServiceProvider;
 use ThaKladd\VectorLite\Commands\MakeVectorLiteClusterCommand;
 use ThaKladd\VectorLite\Commands\VectorLiteClusterCommand;
 use ThaKladd\VectorLite\Commands\VectorLiteMakeCommand;
+use ThaKladd\VectorLite\Commands\VectorLiteReembedCommand;
+use ThaKladd\VectorLite\Services\EmbeddingService;
 
 class VectorLiteServiceProvider extends PackageServiceProvider
 {
@@ -108,7 +110,11 @@ class VectorLiteServiceProvider extends PackageServiceProvider
             VectorLiteMakeCommand::class,
             VectorLiteClusterCommand::class,
             MakeVectorLiteClusterCommand::class,
+            VectorLiteReembedCommand::class,
         ]);
+
+        // A fresh service per resolve, built from the current vector-lite.embeddings config.
+        $this->app->bind(EmbeddingService::class, fn () => new EmbeddingService);
 
         // Embeddings::for() is a static factory; this binding only exists so the
         // Facades\Embeddings root resolves to *some* instance to call it through.
